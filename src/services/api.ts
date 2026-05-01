@@ -285,10 +285,12 @@ export const getFlightPrices = async (
     if (response.data && response.data.prices) {
       console.log(`Received ${response.data.prices.length} prices from ${response.data.source} source`);
       
-      // Convert date strings to Date objects for compatibility
+      // Convert date strings to Date objects, preserve flightDetails so the
+      // carrier slicer in RouteCard / PriceChart can group by airline.
       return response.data.prices.map((price: any) => ({
         date: new Date(price.date),
-        price: price.price
+        price: price.price,
+        flightDetails: price.flightDetails,
       }));
     }
     
