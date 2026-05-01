@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:stack": "make dev",
     "dev:clean": "sh -c 'lsof -ti :8888 | xargs kill -9 2>/dev/null || true' && netlify dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
@@ -18,7 +19,15 @@
     "load-prices": "tsx scripts/loadPrices.ts",
     "test-single-route": "tsx scripts/testSingleRoute.ts",
     "test-all-routes": "tsx scripts/testAllRoutes.ts",
-    "test:functions-local": "node scripts/test-local-functions.mjs"
+    "test:functions-local": "node scripts/test-local-functions.mjs",
+    "test:integration:search": "node scripts/integration-search-flight.mjs",
+    "pull:amadeus-env": "node scripts/pull-amadeus-from-netlify.mjs",
+    "test:integration:search:local": "node scripts/invoke-search-flights-local.mjs",
+    "local:search-integration": "node scripts/run-local-search-integration.mjs",
+    "release:patch": "make release-patch",
+    "release:minor": "make release-minor",
+    "release:major": "make release-major",
+    "release:rc": "make release-rc"
   },
   "dependencies": {
     "@radix-ui/react-dropdown-menu": "^2.1.15",

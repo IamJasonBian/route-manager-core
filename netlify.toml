@@ -12,18 +12,21 @@
   framework = "vite"
   autoLaunch = true
   
-  # Environment variables for local development
+  # Environment variables for local development (netlify dev + functions)
   [dev.environment]
     NODE_ENV = "development"
     VITE_API_URL = "/.netlify/functions"
-    CORS_ORIGIN = "http://localhost:5173"
-    # Set to "true" locally to exercise flight-prices without Amadeus (see .env.example)
-    # USE_MOCK_DATA = "false"
+    # Browser origin when using `make dev` / netlify dev (port from [dev] above)
+    CORS_ORIGIN = "http://localhost:3000"
+    # Amadeus test/sandbox API — use test keys from https://developers.amadeus.com (override in .env if needed)
+    AMADEUS_HOSTNAME = "test"
 
     # These will be loaded from .env file or system environment
     AMADEUS_API_KEY = "${AMADEUS_API_KEY}"
     AMADEUS_API_SECRET = "${AMADEUS_API_SECRET}"
-    AMADEUS_HOSTNAME = "production"
+
+    # Set to "true" locally to exercise flight-prices without Amadeus (see .env.example)
+    # USE_MOCK_DATA = "false"
     
     # Database configuration
     DB_USER = "routeuser"
