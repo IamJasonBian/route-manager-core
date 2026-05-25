@@ -3,6 +3,15 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useLivePolling } from '../hooks/useLivePolling';
 import LiveStatusIndicator from '../components/LiveStatusIndicator';
+import BookingForm from '../components/BookingForm';
+
+const nextSaturdayISO = (from: Date = new Date()): string => {
+  const d = new Date(from);
+  const day = d.getDay();
+  const delta = day === 6 ? 7 : (6 - day + 7) % 7;
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().split('T')[0];
+};
 
 interface Airport {
   iataCode: string;
@@ -61,6 +70,8 @@ export default function SearchFlightsPage() {
   const [flights, setFlights] = useState<Flight[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [bookingOffer, setBookingOffer] = useState<Flight | null>(null);
+  const [bookingResult, setBookingResult] = useState<{ orderId?: string; pnr?: string; environment?: string } | null>(null);
   const lastSearchParamsRef = useRef<{
     origin: string;
     destination: string;
@@ -421,6 +432,13 @@ export default function SearchFlightsPage() {
                   onChange={(e) => setDepartureDate(e.target.value)}
                   min={new Date().toISOString().split('T')[0]}
                 />
+                <button
+                  type="button"
+                  onClick={() => setDepartureDate(nextSaturdayISO())}
+                  className="mt-1 text-xs font-medium text-cyan-600 hover:text-cyan-500"
+                >
+                  Next Saturday
+                </button>
               </div>
 
               {/* Return Date - Conditionally Rendered */}
@@ -571,18 +589,30 @@ export default function SearchFlightsPage() {
                               {flight.itineraries[0].segments[0].aircraft.code}
                             </div>
                           </div>
-                          <a
-                            href={getBookingLink(flight)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500"
-                          >
-                            Book Flight
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" viewBox="0 0 20 20" fill="currentColor">
-                              <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-                              <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
-                            </svg>
-                          </a>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBookingResult(null);
+                                setBookingOffer(flight);
+                              }}
+                              className="flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+                            >
+                              Book in-app
+                            </button>
+                            <a
+                              href={getBookingLink(flight)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500"
+                            >
+                              Google Flights
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                                <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                              </svg>
+                            </a>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -615,6 +645,26 @@ export default function SearchFlightsPage() {
             )}
           </div>
         </div>
+
+        {bookingResult && (
+          <div className="mt-6 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <strong>Booking confirmed</strong>
+            {bookingResult.pnr && <> — PNR <code className="font-mono">{bookingResult.pnr}</code></>}
+            {bookingResult.orderId && <> · order <code className="font-mono">{bookingResult.orderId}</code></>}
+            {bookingResult.environment === 'test' && <> · Amadeus <em>test</em> env (no real ticket)</>}
+          </div>
+        )}
+
+        {bookingOffer && (
+          <BookingForm
+            flightOffer={bookingOffer}
+            onClose={() => setBookingOffer(null)}
+            onBooked={(confirmation) => {
+              setBookingResult(confirmation);
+              setBookingOffer(null);
+            }}
+          />
+        )}
       </div>
     </div>
   );
