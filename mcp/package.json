@@ -1,0 +1,15 @@
+{
+  "name": "route-manager-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing route-manager flight price lookups (Amadeus via the deployed Netlify function).",
+  "type": "module",
+  "bin": {
+    "route-manager-mcp": "./server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
