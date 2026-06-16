@@ -5,7 +5,7 @@
 const ENDPOINT = process.env.ENDPOINT
   || 'https://route-manager-prod.netlify.app/.netlify/functions/search-flights';
 
-const ORIGINS = ['JFK', 'NYC'];
+const ORIGINS = ['JFK', 'LGA', 'NYC'];
 const DESTINATIONS = ['GRR', 'DTW'];
 const WEEKS = 4;
 
