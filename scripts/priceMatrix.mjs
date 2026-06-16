@@ -27,6 +27,7 @@ async function fetchPrice(origin, destination, departureDate) {
       origin,
       destination,
       departureDate,
+      // one-way: returnDate intentionally omitted
       adults: 1,
       nonStop: false,
       maxResults: 5,
@@ -74,8 +75,8 @@ async function main() {
   }
 
   const googleFlights = (o, d, date) =>
-    `https://www.google.com/travel/flights?q=Flights%20from%20${o}%20to%20${d}%20on%20${date}`;
-  const kayak = (o, d, date) => `https://www.kayak.com/flights/${o}-${d}/${date}`;
+    `https://www.google.com/travel/flights?q=One-way%20flights%20from%20${o}%20to%20${d}%20on%20${date}`;
+  const kayak = (o, d, date) => `https://www.kayak.com/flights/${o}-${d}/${date}?sort=price_a`;
 
   const pad = (s, n) => String(s).padEnd(n);
   const header = ['Route', ...dates];
