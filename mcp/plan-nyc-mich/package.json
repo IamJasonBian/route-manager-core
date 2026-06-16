@@ -1,0 +1,15 @@
+{
+  "name": "plan-nyc-mich",
+  "version": "0.1.0",
+  "description": "Curated MCP server for planning weekend flights between NYC-area airports (JFK/LGA/NYC) and Michigan (GRR/DTW).",
+  "type": "module",
+  "bin": {
+    "plan-nyc-mich": "./server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

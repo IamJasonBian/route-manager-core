@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// One-off: fetch cheapest one-way price per (route, week-start date) for the next 4 weeks.
-// Hits the deployed alpha Netlify function (no local Amadeus creds needed).
+// One-off: fetch cheapest one-way price per (route, weekend date) for the next 4 weekends.
+// Hits the deployed Netlify function (no local Amadeus creds needed).
 
 const ENDPOINT = process.env.ENDPOINT
   || 'https://route-manager-prod.netlify.app/.netlify/functions/search-flights';
 
-const ORIGINS = ['JFK', 'NYC'];
+const ORIGINS = ['JFK', 'LGA', 'NYC'];
 const DESTINATIONS = ['GRR', 'DTW'];
 const WEEKS = 4;
 
@@ -49,7 +49,18 @@ async function fetchPrice(origin, destination, departureDate) {
 async function main() {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
-  const dates = Array.from({ length: WEEKS }, (_, i) => iso(addDays(today, 7 * (i + 1))));
+  const dow = today.getUTCDay();
+  const daysToSat = ((6 - dow + 7) % 7) || 7;
+  const firstSat = addDays(today, daysToSat);
+  const dates = [];
+  for (let w = 0; w < WEEKS; w++) {
+    const sat = addDays(firstSat, 7 * w);
+    dates.push(iso(sat), iso(addDays(sat, 1)));
+  }
+  const dayLabel = (s) =>
+    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][
+      new Date(s + 'T00:00:00Z').getUTCDay()
+    ];
 
   const routes = [];
   for (const o of ORIGINS) for (const d of DESTINATIONS) routes.push([o, d]);
@@ -79,7 +90,7 @@ async function main() {
   const kayak = (o, d, date) => `https://www.kayak.com/flights/${o}-${d}/${date}?sort=price_a`;
 
   const pad = (s, n) => String(s).padEnd(n);
-  const header = ['Route', ...dates];
+  const header = ['Route', ...dates.map((d) => `${dayLabel(d)} ${d.slice(5)}`)];
   const widths = header.map((h) => Math.max(h.length, 14));
   console.log('\n' + header.map((h, i) => pad(h, widths[i])).join(' | '));
   console.log(widths.map((w) => '-'.repeat(w)).join('-+-'));
@@ -108,7 +119,7 @@ async function main() {
   }
 
   console.log('\nMarkdown:');
-  console.log('| Route | ' + dates.join(' | ') + ' |');
+  console.log('| Route | ' + dates.map((d) => `${dayLabel(d)} ${d.slice(5)}`).join(' | ') + ' |');
   console.log('|' + Array(dates.length + 1).fill('---').join('|') + '|');
   for (const row of rows) {
     const [o, d] = row.route.split('->');
