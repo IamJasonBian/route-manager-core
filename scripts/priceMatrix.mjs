@@ -73,9 +73,13 @@ async function main() {
     rows.push({ route: `${o}->${d}`, cells });
   }
 
+  const googleFlights = (o, d, date) =>
+    `https://www.google.com/travel/flights?q=Flights%20from%20${o}%20to%20${d}%20on%20${date}`;
+  const kayak = (o, d, date) => `https://www.kayak.com/flights/${o}-${d}/${date}`;
+
   const pad = (s, n) => String(s).padEnd(n);
   const header = ['Route', ...dates];
-  const widths = header.map((h) => Math.max(h.length, 12));
+  const widths = header.map((h) => Math.max(h.length, 14));
   console.log('\n' + header.map((h, i) => pad(h, widths[i])).join(' | '));
   console.log(widths.map((w) => '-'.repeat(w)).join('-+-'));
   for (const row of rows) {
@@ -88,6 +92,31 @@ async function main() {
       }),
     ];
     console.log(cols.join(' | '));
+  }
+
+  console.log('\nBooking links:');
+  for (const row of rows) {
+    const [o, d] = row.route.split('->');
+    console.log(`\n${row.route}:`);
+    for (const date of dates) {
+      const c = row.cells[date];
+      const price = c.error ? 'ERR' : c.price == null ? '—' : `$${c.price.toFixed(2)}`;
+      console.log(`  ${date}  ${price.padEnd(10)}  Google: ${googleFlights(o, d, date)}`);
+      console.log(`  ${' '.repeat(date.length)}  ${' '.repeat(10)}  Kayak:  ${kayak(o, d, date)}`);
+    }
+  }
+
+  console.log('\nMarkdown:');
+  console.log('| Route | ' + dates.join(' | ') + ' |');
+  console.log('|' + Array(dates.length + 1).fill('---').join('|') + '|');
+  for (const row of rows) {
+    const [o, d] = row.route.split('->');
+    const cells = dates.map((date) => {
+      const c = row.cells[date];
+      const v = c.error ? 'ERR' : c.price == null ? '—' : `$${c.price.toFixed(2)}`;
+      return `[${v}](${googleFlights(o, d, date)})`;
+    });
+    console.log(`| ${row.route} | ${cells.join(' | ')} |`);
   }
 
   console.log('\nJSON:');
