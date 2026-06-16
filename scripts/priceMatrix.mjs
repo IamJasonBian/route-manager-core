@@ -1,0 +1,100 @@
+#!/usr/bin/env node
+// One-off: fetch cheapest one-way price per (route, week-start date) for the next 4 weeks.
+// Hits the deployed alpha Netlify function (no local Amadeus creds needed).
+
+const ENDPOINT = process.env.ENDPOINT
+  || 'https://route-manager-prod.netlify.app/.netlify/functions/search-flights';
+
+const ORIGINS = ['JFK', 'NYC'];
+const DESTINATIONS = ['GRR', 'DTW'];
+const WEEKS = 4;
+
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+function iso(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+async function fetchPrice(origin, destination, departureDate) {
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      origin,
+      destination,
+      departureDate,
+      adults: 1,
+      nonStop: false,
+      maxResults: 5,
+    }),
+  });
+  if (!res.ok) {
+    return { error: `HTTP ${res.status}` };
+  }
+  const json = await res.json();
+  const offers = json.data || [];
+  if (offers.length === 0) return { price: null };
+  const prices = offers
+    .map((o) => parseFloat(o.price?.grandTotal ?? o.price?.total))
+    .filter((n) => Number.isFinite(n));
+  if (prices.length === 0) return { price: null };
+  return { price: Math.min(...prices), offers: offers.length };
+}
+
+async function main() {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const dates = Array.from({ length: WEEKS }, (_, i) => iso(addDays(today, 7 * (i + 1))));
+
+  const routes = [];
+  for (const o of ORIGINS) for (const d of DESTINATIONS) routes.push([o, d]);
+
+  const rows = [];
+  for (const [o, d] of routes) {
+    const cells = {};
+    for (const date of dates) {
+      process.stderr.write(`fetching ${o}->${d} on ${date}... `);
+      try {
+        const r = await fetchPrice(o, d, date);
+        cells[date] = r;
+        process.stderr.write(
+          r.error ? `ERR ${r.error}\n` : r.price == null ? 'no offers\n' : `$${r.price} (${r.offers})\n`
+        );
+      } catch (e) {
+        cells[date] = { error: e.message };
+        process.stderr.write(`THROW ${e.message}\n`);
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    rows.push({ route: `${o}->${d}`, cells });
+  }
+
+  const pad = (s, n) => String(s).padEnd(n);
+  const header = ['Route', ...dates];
+  const widths = header.map((h) => Math.max(h.length, 12));
+  console.log('\n' + header.map((h, i) => pad(h, widths[i])).join(' | '));
+  console.log(widths.map((w) => '-'.repeat(w)).join('-+-'));
+  for (const row of rows) {
+    const cols = [
+      pad(row.route, widths[0]),
+      ...dates.map((d, i) => {
+        const c = row.cells[d];
+        const v = c.error ? `ERR` : c.price == null ? '—' : `$${c.price.toFixed(2)}`;
+        return pad(v, widths[i + 1]);
+      }),
+    ];
+    console.log(cols.join(' | '));
+  }
+
+  console.log('\nJSON:');
+  console.log(JSON.stringify({ dates, rows }, null, 2));
+}
+
+main().catch((e) => {
+  console.error('Fatal:', e);
+  process.exit(1);
+});
