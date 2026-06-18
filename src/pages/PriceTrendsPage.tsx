@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import PriceHistoryChart, { ChartType } from '../components/PriceHistoryChart';
 import { getPriceHistory } from '../services/api';
+import { generateGoogleFlightsUrl, generateGoogleFlightsExploreUrl } from '../utils/googleFlights';
+import PassengerForm from '../components/PassengerForm';
 
 interface Airport {
   iataCode: string;
@@ -48,6 +50,22 @@ function TabPanel({ children, isActive, id }: TabPanelProps) {
 }
 
 type StopsFilter = 'cheapest' | '0' | '1' | '2' | '3+';
+type FarePreference = '' | 'refundable' | 'no_penalty' | 'no_restriction';
+
+const farePreferenceOptions = [
+  { code: '' as FarePreference, name: 'Any fare type' },
+  { code: 'refundable' as FarePreference, name: 'Refundable fares only' },
+  { code: 'no_penalty' as FarePreference, name: 'No change fees' },
+  { code: 'no_restriction' as FarePreference, name: 'No restrictions (flexible)' },
+];
+
+// Airlines that can be excluded from chart display
+const excludableAirlines = [
+  { code: 'NK', name: 'Spirit' },
+  { code: 'AA', name: 'American' },
+  { code: 'F9', name: 'Frontier' },
+  { code: 'B6', name: 'JetBlue' },
+];
 
 // Map of coordinates to nearest major airport
 const AIRPORT_COORDS: { code: string; lat: number; lon: number; name: string }[] = [
@@ -93,6 +111,8 @@ export default function PriceTrendsPage() {
   const [destination, setDestination] = useState('DTW');
   const [tabValue, setTabValue] = useState(0);
   const [stopsFilter, setStopsFilter] = useState<StopsFilter>('cheapest');
+  const [farePreference, setFarePreference] = useState<FarePreference>('');
+  const [excludedAirlines, setExcludedAirlines] = useState<string[]>([]);
   const [showLocationPrompt, setShowLocationPrompt] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [detectedAirport, setDetectedAirport] = useState<{ code: string; name: string } | null>(null);
@@ -110,20 +130,34 @@ export default function PriceTrendsPage() {
   const destinationRef = useRef<HTMLDivElement>(null);
 
   const filteredPrices = useMemo(() => {
-    if (stopsFilter === 'cheapest') {
-      return prices;
+    let filtered = prices;
+
+    // Filter by excluded airlines
+    if (excludedAirlines.length > 0) {
+      filtered = filtered.filter(p => {
+        const carrier = p.flightDetails?.carrier;
+        if (!carrier) return true; // Keep if no carrier info
+        // Extract airline code from carrier (e.g., "AA1234" -> "AA")
+        const airlineCode = carrier.match(/^[A-Z]{2}/)?.[0];
+        return !airlineCode || !excludedAirlines.includes(airlineCode);
+      });
     }
 
-    return prices.filter(p => {
-      const stops = p.flightDetails?.stops;
-      if (stops === undefined) return false;
+    // Filter by stops
+    if (stopsFilter !== 'cheapest') {
+      filtered = filtered.filter(p => {
+        const stops = p.flightDetails?.stops;
+        if (stops === undefined) return false;
 
-      if (stopsFilter === '3+') {
-        return stops >= 3;
-      }
-      return stops === parseInt(stopsFilter, 10);
-    });
-  }, [prices, stopsFilter]);
+        if (stopsFilter === '3+') {
+          return stops >= 3;
+        }
+        return stops === parseInt(stopsFilter, 10);
+      });
+    }
+
+    return filtered;
+  }, [prices, stopsFilter, excludedAirlines]);
 
   const chartTypes: ChartType[] = ['line', 'burn-down', 'draw-down'];
   const chartTitles = [
@@ -134,6 +168,16 @@ export default function PriceTrendsPage() {
 
   const handleTabChange = (newValue: number) => {
     setTabValue(newValue);
+  };
+
+  const handleAirlineExclusion = (airlineCode: string) => {
+    setExcludedAirlines(prev => {
+      if (prev.includes(airlineCode)) {
+        return prev.filter(code => code !== airlineCode);
+      } else {
+        return [...prev, airlineCode];
+      }
+    });
   };
 
   // Search for airports using Amadeus API
@@ -296,8 +340,11 @@ export default function PriceTrendsPage() {
 
   const handleUpdate = () => {
     if (originInput.length >= 3 && destinationInput.length >= 3) {
+      // Update origin/destination state
       setOrigin(originInput);
       setDestination(destinationInput);
+      // Always refresh price data (even if origin/destination unchanged)
+      fetchPriceTrends(originInput, destinationInput);
     }
   };
 
@@ -383,7 +430,7 @@ export default function PriceTrendsPage() {
 
         <div className="surface-paper p-6">
           <div className="mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
               {/* Origin Input with Autocomplete */}
               <div ref={originRef} className="relative">
                 <label htmlFor="origin" className="block text-sm font-medium text-gray-700 mb-1">From</label>
@@ -465,6 +512,23 @@ export default function PriceTrendsPage() {
                 </select>
               </div>
 
+              {/* Fare Preference */}
+              <div>
+                <label htmlFor="farePreference" className="block text-sm font-medium text-gray-700 mb-1">Fare Type</label>
+                <select
+                  id="farePreference"
+                  value={farePreference}
+                  onChange={(e) => setFarePreference(e.target.value as FarePreference)}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                >
+                  {farePreferenceOptions.map(({ code, name }) => (
+                    <option key={code} value={code}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="flex items-end">
                 <button
                   type="button"
@@ -477,6 +541,22 @@ export default function PriceTrendsPage() {
                   {isLoading ? 'Loading...' : 'Update Chart'}
                 </button>
               </div>
+            </div>
+
+            {/* Airline Exclusions */}
+            <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-gray-200">
+              <span className="text-sm font-medium text-gray-700">Exclude Airlines:</span>
+              {excludableAirlines.map(({ code, name }) => (
+                <label key={code} className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={excludedAirlines.includes(code)}
+                    onChange={() => handleAirlineExclusion(code)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span className="text-sm text-gray-700">{name} ({code})</span>
+                </label>
+              ))}
             </div>
             
             <div className="mt-6">
@@ -503,8 +583,8 @@ export default function PriceTrendsPage() {
               </div>
               
               {chartTypes.map((type, index) => (
-                <TabPanel 
-                  key={type} 
+                <TabPanel
+                  key={type}
                   id={`${type}-panel`}
                   isActive={tabValue === index}
                 >
@@ -543,7 +623,80 @@ export default function PriceTrendsPage() {
               ))}
           </div>
           </div>
-          
+
+          {/* Google Flights Quick Links */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Book on Google Flights</h3>
+              <a
+                href={generateGoogleFlightsExploreUrl(origin, destination)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <svg className="h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Search {origin} → {destination}
+              </a>
+            </div>
+
+            {/* Flight List with Links */}
+            {filteredPrices.length > 0 && (
+              <div
+                className="bg-gray-50 rounded-lg p-4"
+                key={`flights-container-${origin}-${destination}-${stopsFilter}-${excludedAirlines.join(',')}-${filteredPrices.length}`}
+              >
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Recent Price Points (click to book)</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {filteredPrices.slice(0, 6).map((pricePoint, index) => {
+                    const date = pricePoint.flightDetails?.departureTime
+                      ? new Date(pricePoint.flightDetails.departureTime)
+                      : new Date(pricePoint.recorded_at);
+                    const googleFlightsUrl = generateGoogleFlightsUrl(origin, destination, date);
+
+                    return (
+                      <a
+                        key={`${origin}-${destination}-${stopsFilter}-${excludedAirlines.join(',')}-${pricePoint.recorded_at}-${pricePoint.price}-${index}`}
+                        href={googleFlightsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all"
+                      >
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </div>
+                          {pricePoint.flightDetails?.flightNumber && (
+                            <div className="text-xs text-gray-500">
+                              {pricePoint.flightDetails.flightNumber}
+                              {pricePoint.flightDetails.stops !== undefined && (
+                                <span className="ml-2">
+                                  {pricePoint.flightDetails.stops === 0 ? 'Nonstop' : `${pricePoint.flightDetails.stops} stop${pricePoint.flightDetails.stops > 1 ? 's' : ''}`}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center">
+                          <span className="text-lg font-bold text-green-600">${pricePoint.price}</span>
+                          <svg className="ml-2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </div>
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+
+        {/* Passenger Form Section */}
+        <div className="mt-8">
+          <PassengerForm origin={origin} destination={destination} />
         </div>
       </div>
     </div>

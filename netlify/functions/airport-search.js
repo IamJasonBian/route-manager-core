@@ -84,10 +84,10 @@ export const handler = async (event, context) => {
 
     console.log(`Searching airports for keyword: ${keyword}`);
 
-    // Search for airports using Amadeus API
+    // Search for airports using Amadeus API (airports only, no metro/city codes)
     const response = await amadeus.referenceData.locations.get({
       keyword: keyword,
-      subType: 'AIRPORT,CITY',
+      subType: 'AIRPORT',
       'page[limit]': 10
     });
 
