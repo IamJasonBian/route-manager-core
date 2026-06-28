@@ -22,7 +22,8 @@ import { envHeadless } from './aa-auth.mjs';
 
 // Per-airline search funnel. Selectors mirror the book-*-trip.mjs scripts and
 // share the same env override names, so a fix in one place fixes both.
-const CONFIGS = {
+// Exported so other entrypoints (e.g. cdp-attach-scrape.mjs) reuse one funnel.
+export const CONFIGS = {
   delta: {
     label: 'delta',
     authModule: './delta-auth.mjs',
@@ -96,7 +97,7 @@ async function openPage(cfg, args, headless) {
   return { browser, context, page, authed: false };
 }
 
-async function runSearch(page, cfg, args) {
+export async function runSearch(page, cfg, args) {
   console.log(`🔎 ${cfg.label}: ${args.from} → ${args.to} on ${args.depart}${args.return ? ` (return ${args.return})` : ' (one-way)'}`);
   await page.goto(cfg.searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
   if (!args.return) await page.click(cfg.sel.oneWay).catch(() => {});
@@ -109,7 +110,7 @@ async function runSearch(page, cfg, args) {
   await page.waitForSelector(cfg.sel.fareCard, { timeout: 45000 }).catch(() => {});
 }
 
-async function extractFares(page, cfg, max) {
+export async function extractFares(page, cfg, max) {
   const cards = page.locator(cfg.sel.fareCard);
   const n = await cards.count().catch(() => 0);
   const fares = [];
@@ -122,7 +123,7 @@ async function extractFares(page, cfg, max) {
   return { total: n, fares };
 }
 
-function writeResults(cfg, args, authed, headless, result) {
+export function writeResults(cfg, args, authed, headless, result) {
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const base = resolve(process.cwd(), '.scrapes', `${cfg.label}-${args.from}-${args.to}-${ts}`);
   mkdirSync(dirname(base), { recursive: true });
@@ -177,7 +178,12 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`❌ ${err.message}`);
-  process.exit(1);
-});
+// Only run the scrape when invoked directly as a CLI, so importing the funnel
+// (CONFIGS/runSearch/extractFares/writeResults) from this module is side-effect free.
+const isCli = import.meta.url === `file://${process.argv[1]}`;
+if (isCli) {
+  main().catch((err) => {
+    console.error(`❌ ${err.message}`);
+    process.exit(1);
+  });
+}
