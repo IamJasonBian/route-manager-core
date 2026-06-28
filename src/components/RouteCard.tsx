@@ -1,6 +1,13 @@
 import * as React from 'react';
 import { MapPinIcon, ClockIcon, ArrowRightIcon, TrendingDownIcon, ExternalLinkIcon } from 'lucide-react';
 import { PriceChart } from './PriceChart';
+import { FlightDetails } from '../services/api';
+import {
+  ALL_CARRIERS_KEY,
+  filterByCarrier,
+  getUniqueCarriers,
+  lowestPricePerDate,
+} from '../utils/carrierPrices';
 // Helper function to generate a Google Flights URL with preset origin, destination, one-way, and economy
 const getGoogleFlightsUrl = (from: string, to: string): string => {
   // Get tomorrow's date for the departure (gives more search options than today)
@@ -28,7 +35,7 @@ interface RouteCardProps {
     from: string;
     to: string;
     basePrice: number;
-    prices: Array<{ date: string | Date; price: number }>;
+    prices: Array<{ date: string | Date; price: number; flightDetails?: FlightDetails }>;
     distance: string;
     duration: string;
   };
@@ -56,8 +63,21 @@ export const RouteCard: React.FC<RouteCardProps> = ({
     distance,
     duration
   } = route;
-  const lowestPrice = Math.min(...prices.map(p => p.price));
-  const highestPrice = Math.max(...prices.map(p => p.price));
+
+  const [carrier, setCarrier] = React.useState<string>(ALL_CARRIERS_KEY);
+  const carriers = React.useMemo(() => getUniqueCarriers(prices), [prices]);
+  const displayedPrices = React.useMemo(() => {
+    const filtered = filterByCarrier(prices, carrier);
+    // Even when filtered to one carrier, multiple offers may share a date — keep cheapest.
+    return lowestPricePerDate(filtered);
+  }, [prices, carrier]);
+
+  const lowestPrice = displayedPrices.length
+    ? Math.min(...displayedPrices.map(p => p.price))
+    : 0;
+  const highestPrice = displayedPrices.length
+    ? Math.max(...displayedPrices.map(p => p.price))
+    : 0;
   const savings = basePrice - lowestPrice;
   return <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
       <div className="flex flex-col space-y-4">
@@ -96,8 +116,25 @@ export const RouteCard: React.FC<RouteCardProps> = ({
             {savings > 0 && <div className="text-xs text-green-600">Save ${savings}</div>}
           </div>
         </div>
+        {carriers.length > 1 && (
+          <div className="flex items-center justify-end text-xs text-gray-600">
+            <label htmlFor={`carrier-${route.id}`} className="mr-2">Carrier</label>
+            <select
+              id={`carrier-${route.id}`}
+              value={carrier}
+              onChange={(e) => setCarrier(e.target.value)}
+              className="border border-gray-200 rounded px-2 py-1 bg-white"
+              data-testid="carrier-slicer"
+            >
+              <option value={ALL_CARRIERS_KEY}>All ({carriers.length})</option>
+              {carriers.map((code) => (
+                <option key={code} value={code}>{code}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="h-52 mt-2">
-          <PriceChart prices={prices} basePrice={basePrice} lowestPrice={lowestPrice} highestPrice={highestPrice} />
+          <PriceChart prices={displayedPrices} basePrice={basePrice} lowestPrice={lowestPrice} highestPrice={highestPrice} />
         </div>
       </div>
     </div>;
