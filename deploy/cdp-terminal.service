@@ -1,0 +1,37 @@
+# systemd unit — keeps the persistent CDP terminal up across reboots/disconnects.
+#
+# Install on the VM (Linux):
+#   sudo cp deploy/cdp-terminal.service /etc/systemd/system/cdp-terminal.service
+#   sudoedit /etc/systemd/system/cdp-terminal.service     # set User + WorkingDirectory
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cdp-terminal
+#   systemctl status cdp-terminal      # journalctl -u cdp-terminal -f  (see endpoints)
+#
+# The terminal binds 127.0.0.1:9222 by default — reach it via an SSH tunnel:
+#   ssh -N -L 9222:127.0.0.1:9222 <user>@<vm>
+# To expose on the network instead, add `Environment=CDP_BIND=0.0.0.0` below
+# (firewall the port — it is unauthenticated control of the browser).
+
+[Unit]
+Description=Route Manager persistent CDP terminal (Chromium remote debugging)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# --- EDIT THESE TWO for your VM clone ---
+User=ubuntu
+WorkingDirectory=/home/ubuntu/route-manager-core
+# ----------------------------------------
+# Loads DELTA_USERNAME/PASSWORD, CDP_PORT, CDP_BIND, HEADLESS, etc. from .env.
+EnvironmentFile=-%h/route-manager-core/.env
+Environment=HEADLESS=true
+ExecStart=/usr/bin/env npm run cdp:headless
+Restart=always
+RestartSec=5
+# Give Chromium room; flush the trace on stop instead of SIGKILL.
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
