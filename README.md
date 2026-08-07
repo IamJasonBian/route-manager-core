@@ -11,7 +11,7 @@ A real-time asset tracking, market analysis, and trading engine system with host
 
 ## Features
 
-The trading system is packaged seperately in [allocation-engine-2.0](https://github.com/IamJasonBian/allocation-engine-2.0) with the training system packaged in [allocation-gym](https://github.com/IamJasonBian/allocation-gym/blob/main/docs/7/iwn_vol_analysis.pdf). The trading system can be hosted using local and managed compute environments to make calls to the allocation-manager service for broker integration. 
+The trading system is packaged seperately in [allocation-engine-2.0](https://github.com/IamJasonBian/allocation-engine-2.0) with the training system packaged in [allocation-gym](https://github.com/IamJasonBian/allocation-gym/blob/main/docs/7/). The trading system can be hosted using local and managed compute environments to make calls to the allocation-manager service for broker integration. 
 
 Deployed keys and auth will be managed locally and trade using an residential ip and device level tokens. 
 
