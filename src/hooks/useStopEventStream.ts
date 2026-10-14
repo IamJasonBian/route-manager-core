@@ -1,0 +1,76 @@
+import { useEffect, useState } from 'react';
+import {
+  applySseFrame,
+  EMPTY_SNAPSHOT,
+  parseSseFrames,
+  stopEventsUrl,
+  type StopRiskSnapshot,
+} from '../services/stopEventStream';
+
+export function useStopEventStream(): {
+  snapshot: StopRiskSnapshot;
+  connected: boolean;
+  error: string | null;
+} {
+  const [snapshot, setSnapshot] = useState<StopRiskSnapshot>(EMPTY_SNAPSHOT);
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const url = stopEventsUrl('sse');
+    let source: EventSource | null = null;
+    let cancelled = false;
+
+    const applyRaw = (event: string, ev: MessageEvent<string>) => {
+      let data: unknown = ev.data;
+      try {
+        data = JSON.parse(ev.data);
+      } catch {
+        /* keep string */
+      }
+      setSnapshot((prev) => applySseFrame(prev, { event, id: ev.lastEventId, data }));
+    };
+
+    if (typeof EventSource !== 'undefined') {
+      source = new EventSource(url);
+      source.addEventListener('snapshot', (ev) => applyRaw('snapshot', ev as MessageEvent<string>));
+      source.addEventListener('coverage', (ev) => applyRaw('coverage', ev as MessageEvent<string>));
+      source.addEventListener('risk', (ev) => applyRaw('risk', ev as MessageEvent<string>));
+      source.addEventListener('activity', (ev) => applyRaw('activity', ev as MessageEvent<string>));
+      source.onopen = () => {
+        if (!cancelled) {
+          setConnected(true);
+          setError(null);
+        }
+      };
+      source.onerror = () => {
+        if (!cancelled) setConnected(false);
+      };
+    } else {
+      fetch(stopEventsUrl('json'))
+        .then((r) => r.text())
+        .then((text) => {
+          if (cancelled) return;
+          try {
+            setSnapshot(JSON.parse(text) as StopRiskSnapshot);
+          } catch {
+            const frames = parseSseFrames(text);
+            let next = EMPTY_SNAPSHOT;
+            for (const frame of frames) next = applySseFrame(next, frame);
+            setSnapshot(next);
+          }
+          setConnected(true);
+        })
+        .catch((err: Error) => {
+          if (!cancelled) setError(err.message);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+      source?.close();
+    };
+  }, []);
+
+  return { snapshot, connected, error };
+}

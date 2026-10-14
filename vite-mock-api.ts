@@ -217,6 +217,62 @@ async function getMockResponse(pathname: string, params: URLSearchParams): Promi
     return { status: 200, body: {} };
   }
 
+  if (fn === 'stop-events-sse') {
+    const snapshot = {
+      as_of: '2026-10-14T00:00:00Z',
+      names: [
+        {
+          symbol: 'MU',
+          quantity: 1,
+          covered_qty: 1,
+          uncovered_qty: 0,
+          coverage_pct: 1,
+          trail_percent: 4,
+          coded_trail_percent: 4,
+          stop_price: 92.16,
+          last_trail_price: 92.2,
+          mark: 96,
+          avg_entry: 100,
+          equity: 96,
+          profit_loss: -4,
+          profit_loss_pct: -4,
+          stop_id: 'mock-mu',
+          stop_type: 'limit',
+          stop_state: 'confirmed',
+        },
+        {
+          symbol: 'NBIS',
+          quantity: 120.126,
+          covered_qty: 35,
+          uncovered_qty: 85.126,
+          coverage_pct: 0.291,
+          trail_percent: 6,
+          coded_trail_percent: 6,
+          stop_price: 194.96,
+          last_trail_price: 195.36,
+          mark: 208.8,
+          avg_entry: 212.14,
+          equity: 25082,
+          profit_loss: -402,
+          profit_loss_pct: -1.58,
+          stop_id: 'mock-nbis',
+          stop_type: 'market',
+          stop_state: 'confirmed',
+        },
+      ],
+      events: [
+        {
+          type: 'risk',
+          code: 'coverage_gap',
+          symbol: 'NBIS',
+          severity: 'critical',
+          message: 'NBIS stop covers 35 of 120.126 shares (29%)',
+        },
+      ],
+    };
+    return { status: 200, body: snapshot };
+  }
+
   // Vend blobs
   if (fn === 'vend-blobs') {
     const store = params.get('store');
@@ -563,6 +619,16 @@ async function mockMiddleware(req: Req, res: Res, next: NextFn) {
   if (!result) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Mock not found for ' + url.pathname }));
+    return;
+  }
+  if (url.pathname.includes('stop-events-sse') && params.get('format') === 'sse') {
+    const { snapshotToSse } = require_('./netlify/functions/lib/stopEvents.cjs');
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(snapshotToSse(result.body));
     return;
   }
   res.writeHead(result.status, {

@@ -21,6 +21,7 @@ const functions = {
   'db-orders': require('../netlify/functions/db-orders.cjs'),
   'db-bot-activity': require('../netlify/functions/db-bot-activity.cjs'),
   'db-pnl': require('../netlify/functions/db-pnl.cjs'),
+  'stop-events-sse': require('../netlify/functions/stop-events-sse.cjs'),
 };
 
 const server = http.createServer(async (req, res) => {
