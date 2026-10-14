@@ -1,8 +1,8 @@
 /** Designated trailing-stop names and the coded trail percentages. */
 const DESIGNATED_STOPS = Object.freeze({ MU: 4, NBIS: 6 });
 
-const CONCENTRATION_WARN = 0.15;
-const COVERAGE_CRITICAL = 0.5;
+/** How many engine events the SSE tail keeps. */
+const EVENT_TAIL = 120;
 
 function num(v) {
   if (v == null || v === '') return 0;
@@ -71,72 +71,66 @@ function coverageFor(position, stop, codedTrail) {
   };
 }
 
-function riskEventsFor(name, bookEquity) {
-  const events = [];
-  const wholeUncovered = Math.floor(name.uncovered_qty);
-  if (wholeUncovered >= 1) {
-    events.push({
-      type: 'risk',
-      code: 'coverage_gap',
-      symbol: name.symbol,
-      severity: name.coverage_pct < COVERAGE_CRITICAL ? 'critical' : 'warning',
-      message: `${name.symbol} stop covers ${name.covered_qty} of ${name.quantity} shares (${(name.coverage_pct * 100).toFixed(0)}%)`,
-      uncovered_qty: name.uncovered_qty,
-      covered_qty: name.covered_qty,
+function engineOrderEvents(history) {
+  const rows = Array.isArray(history) ? history : history?.orders || [];
+  return rows
+    .filter((o) => o && o.id && o.symbol)
+    .map((o) => {
+      const side = String(o.side || '').toUpperCase();
+      const state = String(o.state || o.status || 'unknown').toLowerCase();
+      const qty = num(o.quantity ?? o.qty);
+      const fill = num(o.price);
+      const limit = o.limit_price != null ? num(o.limit_price) : null;
+      const stop = o.stop_price != null ? num(o.stop_price) : null;
+      const price = fill || limit || stop || 0;
+      const kind = stop ? 'stop' : String(o.type || 'order').toLowerCase();
+      return {
+        type: 'engine',
+        id: String(o.id),
+        order_id: String(o.id),
+        code: `order_${state}`,
+        symbol: String(o.symbol).toUpperCase(),
+        side,
+        status: state,
+        order_type: kind,
+        quantity: qty,
+        filled_quantity: num(o.filled_quantity),
+        price,
+        limit_price: limit,
+        stop_price: stop,
+        created_at: o.created_at || null,
+        ts: o.updated_at || o.created_at || null,
+        message: `${side} ${qty} ${String(o.symbol).toUpperCase()} ${kind} @ ${price ? price.toFixed(2) : '—'}`,
+      };
     });
-  }
-
-  const weight = bookEquity > 0 ? name.equity / bookEquity : 0;
-  if (weight >= CONCENTRATION_WARN) {
-    events.push({
-      type: 'risk',
-      code: 'concentration',
-      symbol: name.symbol,
-      severity: 'warning',
-      message: `${name.symbol} is ${(weight * 100).toFixed(1)}% of equity`,
-      weight_pct: weight,
-    });
-  }
-
-  if (name.mark > 0 && name.stop_price > 0) {
-    const room = (name.mark - name.stop_price) / name.mark;
-    if (room >= 0 && room <= 0.02) {
-      events.push({
-        type: 'risk',
-        code: 'tight_trail',
-        symbol: name.symbol,
-        severity: 'warning',
-        message: `${name.symbol} mark is ${(room * 100).toFixed(1)}% above the stop`,
-        room_pct: room,
-      });
-    }
-  }
-  return events;
 }
 
-function activityEvents(activity) {
-  const designated = new Set(Object.keys(DESIGNATED_STOPS));
-  const rows = Array.isArray(activity) ? activity : [];
-  return rows
-    .filter((a) => designated.has(String(a.symbol || '').toUpperCase()))
-    .map((a) => ({
-      type: 'activity',
-      id: a.id != null ? String(a.id) : a.event_id || a.order_id,
-      order_id: a.order_id || null,
-      symbol: String(a.symbol).toUpperCase(),
-      event_type: a.event_type || a.type || 'TRAILING_STOP_ORDER',
-      status: a.status || 'queued',
-      quantity: num(a.quantity),
-      created_at: a.created_at || a.timestamp || null,
-      message: a.message || null,
-    }));
+function eventTs(e) {
+  const t = Date.parse(e.ts || e.created_at || '');
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** Newest `limit` events, newest first. */
+function tailEvents(events, limit = EVENT_TAIL) {
+  return [...events].sort((a, b) => eventTs(b) - eventTs(a)).slice(0, limit);
+}
+
+function normalizePrices(quotes, asOf) {
+  const raw = quotes?.prices || quotes || {};
+  const prices = {};
+  for (const [symbol, value] of Object.entries(raw)) {
+    const price = num(value);
+    if (price > 0) prices[symbol.toUpperCase()] = { symbol: symbol.toUpperCase(), price, ts: asOf };
+  }
+  return prices;
 }
 
 function buildStopRiskSnapshot({
   positions = [],
   stops = [],
   activity = [],
-  bookEquity = 0,
+  history = [],
+  quotes = {},
   asOf = new Date().toISOString(),
 } = {}) {
   const names = Object.keys(DESIGNATED_STOPS).map((symbol) => {
@@ -147,12 +141,14 @@ function buildStopRiskSnapshot({
     return coverageFor(position, stop, DESIGNATED_STOPS[symbol]);
   });
 
-  const events = [
-    ...names.flatMap((n) => riskEventsFor(n, bookEquity)),
-    ...activityEvents(activity),
-  ];
+  const events = tailEvents(engineOrderEvents(history));
+  const prices = normalizePrices(quotes, asOf);
+  // Engine positions carry no mark; fall back to the live quote.
+  for (const name of names) {
+    if (!name.mark && prices[name.symbol]) name.mark = prices[name.symbol].price;
+  }
 
-  return { as_of: asOf, names, events };
+  return { as_of: asOf, names, events, prices };
 }
 
 function encodeSse({ event, id, data, retry } = {}) {
@@ -170,10 +166,13 @@ function snapshotToSse(snapshot, { retry = 8000 } = {}) {
     ...snapshot.names.map((n) =>
       encodeSse({ event: 'coverage', id: n.symbol, data: n })
     ),
+    ...Object.values(snapshot.prices || {}).map((p) =>
+      encodeSse({ event: 'price', id: `${p.symbol}-${p.ts}`, data: p })
+    ),
     ...snapshot.events.map((e, i) =>
       encodeSse({
         event: e.type,
-        id: e.id || `${e.code || e.type}-${e.symbol || i}`,
+        id: e.id || `${e.code}-${e.symbol || i}`,
         data: e,
       })
     ),
@@ -183,6 +182,9 @@ function snapshotToSse(snapshot, { retry = 8000 } = {}) {
 
 module.exports = {
   DESIGNATED_STOPS,
+  EVENT_TAIL,
+  engineOrderEvents,
+  tailEvents,
   buildStopRiskSnapshot,
   encodeSse,
   snapshotToSse,

@@ -1,7 +1,10 @@
 const {
   DESIGNATED_STOPS,
+  EVENT_TAIL,
   buildStopRiskSnapshot,
   encodeSse,
+  engineOrderEvents,
+  snapshotToSse,
 } = require('../../netlify/functions/lib/stopEvents.cjs');
 
 describe('DESIGNATED_STOPS', () => {
@@ -77,7 +80,7 @@ describe('buildStopRiskSnapshot', () => {
   ];
 
   it('joins a symbol-less stop to NBIS via bot-activity order_id', () => {
-    const snap = buildStopRiskSnapshot({ positions, stops, activity, bookEquity: 75662 });
+    const snap = buildStopRiskSnapshot({ positions, stops, activity });
     const nbis = snap.names.find((n) => n.symbol === 'NBIS');
     expect(nbis.covered_qty).toBe(35);
     expect(nbis.uncovered_qty).toBeCloseTo(85.126, 3);
@@ -90,8 +93,7 @@ describe('buildStopRiskSnapshot', () => {
     const snap = buildStopRiskSnapshot({
       positions: [positions[1]],
       stops: [],
-      activity: [],
-      bookEquity: 1000,
+      activity: []
     });
     const mu = snap.names.find((n) => n.symbol === 'MU');
     expect(mu.covered_qty).toBe(0);
@@ -99,42 +101,62 @@ describe('buildStopRiskSnapshot', () => {
     expect(mu.uncovered_qty).toBe(1);
   });
 
-  it('emits a coverage_gap risk when whole shares sit uncovered', () => {
-    const snap = buildStopRiskSnapshot({ positions, stops, activity, bookEquity: 75662 });
-    const gaps = snap.events.filter((e) => e.type === 'risk' && e.code === 'coverage_gap');
-    expect(gaps.map((e) => e.symbol)).toContain('NBIS');
-    expect(gaps.find((e) => e.symbol === 'NBIS').severity).toBe('critical');
-  });
-
-  it('does not emit coverage_gap for a fully covered designated name', () => {
-    const snap = buildStopRiskSnapshot({
-      positions: [positions[1]],
-      stops,
-      activity: [],
-      bookEquity: 1000,
-    });
-    expect(snap.events.some((e) => e.symbol === 'MU' && e.code === 'coverage_gap')).toBe(false);
-  });
-
-  it('maps bot activity onto the live event list', () => {
-    const snap = buildStopRiskSnapshot({ positions, stops, activity, bookEquity: 75662 });
-    const acts = snap.events.filter((e) => e.type === 'activity');
-    expect(acts).toHaveLength(1);
-    expect(acts[0].symbol).toBe('NBIS');
-    expect(acts[0].order_id).toBe('stop-nbis');
-  });
-
   it('ignores non-designated names', () => {
-    const snap = buildStopRiskSnapshot({ positions, stops, activity, bookEquity: 75662 });
+    const snap = buildStopRiskSnapshot({ positions, stops, activity });
     expect(snap.names.map((n) => n.symbol).sort()).toEqual(['MU', 'NBIS']);
   });
 
-  it('flags concentration when a designated name is a large share of equity', () => {
-    const snap = buildStopRiskSnapshot({ positions, stops, activity, bookEquity: 75662 });
-    const conc = snap.events.find((e) => e.code === 'concentration' && e.symbol === 'NBIS');
-    expect(conc).toBeTruthy();
-    expect(conc.severity).toBe('warning');
-    expect(conc.weight_pct).toBeCloseTo(25082 / 75662, 3);
+
+  const order = (i, extra = {}) => ({
+    id: `o-${i}`,
+    symbol: i % 2 ? 'NBIS' : 'SPY',
+    side: i % 3 ? 'BUY' : 'SELL',
+    state: 'filled',
+    type: 'limit',
+    quantity: 1,
+    filled_quantity: 1,
+    price: 100 + i,
+    limit_price: 100 + i,
+    stop_price: null,
+    created_at: new Date(Date.UTC(2026, 9, 14, 13, 0, i)).toISOString(),
+    updated_at: new Date(Date.UTC(2026, 9, 14, 14, 0, i)).toISOString(),
+    ...extra,
+  });
+
+  it('maps engine order history into tagged events for every symbol', () => {
+    const [evt] = engineOrderEvents([
+      order(1, { state: 'queued', price: null, limit_price: null, stop_price: 174.92, type: 'market' }),
+    ]);
+    expect(evt).toMatchObject({
+      type: 'engine',
+      id: 'o-1',
+      code: 'order_queued',
+      symbol: 'NBIS',
+      order_type: 'stop',
+      price: 174.92,
+      ts: order(1).updated_at,
+    });
+  });
+
+  it('keeps only the newest EVENT_TAIL engine events, newest first', () => {
+    const history = Array.from({ length: EVENT_TAIL + 30 }, (_, i) => order(i));
+    const snap = buildStopRiskSnapshot({ positions, stops, history });
+    expect(EVENT_TAIL).toBe(120);
+    expect(snap.events).toHaveLength(EVENT_TAIL);
+    expect(snap.events[0].id).toBe(`o-${EVENT_TAIL + 29}`);
+    expect(snap.events.every((e) => e.type === 'engine')).toBe(true);
+  });
+
+  it('emits a price frame per quoted symbol and fills a missing mark from it', () => {
+    const snap = buildStopRiskSnapshot({
+      positions: [{ symbol: 'NBIS', quantity: 10 }],
+      stops,
+      quotes: { prices: { NBIS: 211.01, MU: 96 } },
+      asOf: '2026-10-14T22:00:00Z',
+    });
+    expect(snap.names.find((n) => n.symbol === 'NBIS').mark).toBe(211.01);
+    expect(snap.prices.NBIS).toEqual({ symbol: 'NBIS', price: 211.01, ts: '2026-10-14T22:00:00Z' });
+    expect(snapshotToSse(snap)).toContain('event: price\nid: NBIS-2026-10-14T22:00:00Z');
   });
 });
 

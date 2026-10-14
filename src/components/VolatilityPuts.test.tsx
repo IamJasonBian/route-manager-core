@@ -12,6 +12,10 @@ jest.mock('recharts', () => {
     ),
     BarChart: ({ children }: { children: React.ReactNode }) => <svg>{children}</svg>,
     Bar: () => null,
+    ComposedChart: ({ children }: { children: React.ReactNode }) => <svg>{children}</svg>,
+    Line: () => null,
+    Scatter: ({ data }: { data: unknown[] }) => <g data-testid="scatter" data-count={data.length} />,
+    ReferenceLine: () => null,
     XAxis: () => null,
     YAxis: () => null,
     CartesianGrid: () => null,
@@ -19,9 +23,14 @@ jest.mock('recharts', () => {
   };
 });
 
+jest.mock('../services/twelveDataService', () => ({
+  getIntradaySeries: () => Promise.resolve([]),
+}));
+
 jest.mock('../hooks/useStopEventStream', () => ({
   useStopEventStream: () => ({
     snapshot: { as_of: '', names: [], events: [] },
+    ticks: {},
     connected: false,
     error: null,
   }),
@@ -71,21 +80,41 @@ const SNAPSHOT: StopRiskSnapshot = {
   ],
   events: [
     {
-      type: 'risk',
-      code: 'coverage_gap',
+      type: 'engine',
+      id: 'o-1',
+      code: 'order_filled',
       symbol: 'NBIS',
-      severity: 'critical',
-      message: 'NBIS stop covers 35 of 120.126 shares (29%)',
+      side: 'BUY',
+      status: 'filled',
+      order_type: 'limit',
+      price: 178.5,
+      ts: '2026-10-14T22:39:30Z',
+      message: 'BUY 1 NBIS limit @ 178.50',
+    },
+    {
+      type: 'engine',
+      id: 'o-2',
+      code: 'order_queued',
+      symbol: 'NBIS',
+      side: 'SELL',
+      status: 'queued',
+      order_type: 'stop',
+      price: 174.92,
+      ts: '2026-10-14T22:30:02Z',
+      message: 'SELL 20 NBIS stop @ 174.92',
     },
   ],
 };
 
 describe('VolatilityPuts', () => {
-  it('renders MU/NBIS coverage and the live event feed', () => {
-    render(<VolatilityPuts snapshot={SNAPSHOT} connected focusSymbol="NBIS" />);
+  it('renders MU/NBIS coverage, the engine event feed, and event tags on the price chart', () => {
+    const ticks = { NBIS: [{ symbol: 'NBIS', price: 179, ts: '2026-10-14T22:40:00Z' }] };
+    render(<VolatilityPuts snapshot={SNAPSHOT} ticks={ticks} connected focusSymbol="NBIS" />);
     expect(screen.getByTestId('coverage-NBIS').textContent).toMatch(/partial cover/);
     expect(screen.getByTestId('coverage-MU').textContent).toMatch(/covered/);
     expect(screen.getByTestId('sse-status').textContent).toMatch(/live/);
-    expect(screen.getAllByTestId('live-event')[0].textContent).toMatch(/coverage_gap/);
+    expect(screen.getAllByTestId('live-event')[0].textContent).toMatch(/order_filled/);
+    expect(screen.getByTestId('scatter').getAttribute('data-count')).toBe('2');
+    expect(screen.getByRole('tab', { name: 'NBIS' }).getAttribute('aria-selected')).toBe('true');
   });
 });

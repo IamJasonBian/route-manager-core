@@ -1,22 +1,44 @@
 import { useEffect, useState } from 'react';
 import {
+  appendTick,
   applySseFrame,
   EMPTY_SNAPSHOT,
   parseSseFrames,
   stopEventsUrl,
+  type PriceTick,
   type StopRiskSnapshot,
 } from '../services/stopEventStream';
 
+export type PriceTicks = Record<string, PriceTick[]>;
+
+function isTick(value: unknown): value is PriceTick {
+  const t = value as PriceTick;
+  return !!t && typeof t.symbol === 'string' && typeof t.price === 'number' && !!t.ts;
+}
+
 export function useStopEventStream(): {
   snapshot: StopRiskSnapshot;
+  ticks: PriceTicks;
   connected: boolean;
   error: string | null;
 } {
   const [snapshot, setSnapshot] = useState<StopRiskSnapshot>(EMPTY_SNAPSHOT);
+  const [ticks, setTicks] = useState<PriceTicks>({});
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Each EventSource reconnect (retry: 8000) delivers a fresh quote, so the
+    // series grows into a live price line.
+    const recordTicks = (incoming: PriceTick[]) => {
+      if (!incoming.length) return;
+      setTicks((prev) => {
+        const next = { ...prev };
+        for (const tick of incoming) next[tick.symbol] = appendTick(next[tick.symbol] || [], tick);
+        return next;
+      });
+    };
+
     const url = stopEventsUrl('sse');
     let source: EventSource | null = null;
     let cancelled = false;
@@ -29,14 +51,15 @@ export function useStopEventStream(): {
         /* keep string */
       }
       setSnapshot((prev) => applySseFrame(prev, { event, id: ev.lastEventId, data }));
+      if (event === 'price' && isTick(data)) recordTicks([data]);
     };
 
     if (typeof EventSource !== 'undefined') {
       source = new EventSource(url);
       source.addEventListener('snapshot', (ev) => applyRaw('snapshot', ev as MessageEvent<string>));
       source.addEventListener('coverage', (ev) => applyRaw('coverage', ev as MessageEvent<string>));
-      source.addEventListener('risk', (ev) => applyRaw('risk', ev as MessageEvent<string>));
-      source.addEventListener('activity', (ev) => applyRaw('activity', ev as MessageEvent<string>));
+      source.addEventListener('engine', (ev) => applyRaw('engine', ev as MessageEvent<string>));
+      source.addEventListener('price', (ev) => applyRaw('price', ev as MessageEvent<string>));
       source.onopen = () => {
         if (!cancelled) {
           setConnected(true);
@@ -52,7 +75,9 @@ export function useStopEventStream(): {
         .then((text) => {
           if (cancelled) return;
           try {
-            setSnapshot(JSON.parse(text) as StopRiskSnapshot);
+            const snap = applySseFrame(EMPTY_SNAPSHOT, { event: 'snapshot', data: JSON.parse(text) });
+            setSnapshot(snap);
+            recordTicks(Object.values(snap.prices || {}));
           } catch {
             const frames = parseSseFrames(text);
             let next = EMPTY_SNAPSHOT;
@@ -72,5 +97,5 @@ export function useStopEventStream(): {
     };
   }, []);
 
-  return { snapshot, connected, error };
+  return { snapshot, ticks, connected, error };
 }

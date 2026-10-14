@@ -1,17 +1,23 @@
 /**
- * Live stop-risk snapshot for designated names (MU 4%, NBIS 6%).
+ * Live stop-risk snapshot for designated names (MU 4%, NBIS 6%), plus a tail
+ * of the last 120 engine order events (all symbols) and live quotes for them.
  *
  * GET  /.netlify/functions/stop-events-sse
  *   Accept: text/event-stream  → SSE frames (EventSource reconnects after close)
  *   Accept: application/json   → JSON snapshot
  *
  * Sources (public reads, no RH credentials):
- *   Trading DB positions + bot activity, engine trailing-stop book + orders.
+ *   Trading DB positions + bot activity, engine trailing-stop book + orders,
+ *   engine order history (event tail) and quotes (price frames).
  */
 
 const {
+  DESIGNATED_STOPS,
+  EVENT_TAIL,
   buildStopRiskSnapshot,
+  engineOrderEvents,
   snapshotToSse,
+  tailEvents,
 } = require('./lib/stopEvents.cjs');
 
 const TRADING_DB = (
@@ -63,12 +69,10 @@ function pickStops(trailing, orders) {
   }));
 }
 
-function pickEquity(dbPos, enginePos) {
-  const acct = dbPos?.data?.account || {};
-  if (acct.equity) return Number(acct.equity) || 0;
-  const totals = dbPos?.data?.totals || {};
-  if (totals.market_value) return Number(totals.market_value) || 0;
-  return Number(enginePos?.equity || 0) || 0;
+/** Designated names plus every symbol in the event tail, for the quote fetch. */
+function quoteSymbols(history) {
+  const tail = tailEvents(engineOrderEvents(history), EVENT_TAIL);
+  return [...new Set([...Object.keys(DESIGNATED_STOPS), ...tail.map((e) => e.symbol)])];
 }
 
 async function loadSnapshot() {
@@ -78,16 +82,22 @@ async function loadSnapshot() {
     getJson(`${ENGINE_API}/api/robinhood/trailing-stop`),
     getJson(`${ENGINE_API}/api/orders`),
     getJson(`${ENGINE_API}/api/positions`),
+    getJson(`${ENGINE_API}/api/orders/history?limit=${EVENT_TAIL}`),
   ]);
-  const [dbPos, dbAct, trailing, orders, enginePos] = settled.map((r) =>
+  const [dbPos, dbAct, trailing, orders, enginePos, history] = settled.map((r) =>
     r.status === 'fulfilled' ? r.value : null
   );
+  const symbols = quoteSymbols(history);
+  const quotes = await getJson(
+    `${ENGINE_API}/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`
+  ).catch(() => null);
 
   return buildStopRiskSnapshot({
     positions: pickPositions(dbPos, enginePos),
     stops: pickStops(trailing, orders),
     activity: pickActivity(dbAct),
-    bookEquity: pickEquity(dbPos, enginePos),
+    history: history?.orders || [],
+    quotes: quotes || {},
     asOf: new Date().toISOString(),
   });
 }
@@ -129,4 +139,4 @@ exports.handler = async (event) => {
   }
 };
 
-exports._internal = { pickPositions, pickActivity, pickStops, pickEquity };
+exports._internal = { pickPositions, pickActivity, pickStops, quoteSymbols };

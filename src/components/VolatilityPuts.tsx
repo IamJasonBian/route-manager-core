@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, FileText, Download, Radio } from 'lucide-react';
+import { Activity, FileText, Download, Radio } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -8,8 +8,15 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { useStopEventStream } from '../hooks/useStopEventStream';
-import type { CoverageName, StopRiskEvent, StopRiskSnapshot } from '../services/stopEventStream';
+import { useStopEventStream, type PriceTicks } from '../hooks/useStopEventStream';
+import {
+  DESIGNATED_SYMBOLS,
+  eventTs,
+  type CoverageName,
+  type StopRiskEvent,
+  type StopRiskSnapshot,
+} from '../services/stopEventStream';
+import EventPriceChart from './EventPriceChart';
 
 const WHITEPAPER_URL =
   'https://raw.githubusercontent.com/IamJasonBian/allocation-gym/IamJasonBian/audit-redis-proto/docs/7/iwn_vol_analysis.pdf';
@@ -92,19 +99,10 @@ function NameCard({ name, focused }: { name: CoverageName; focused: boolean }) {
 }
 
 function EventRow({ event }: { event: StopRiskEvent }) {
-  const tone =
-    event.severity === 'critical'
-      ? 'text-red-600 dark:text-red-400'
-      : event.type === 'activity'
-        ? 'text-gray-700 dark:text-gray-200'
-        : 'text-amber-700 dark:text-amber-300';
+  const tone = 'text-gray-700 dark:text-gray-200';
   return (
     <div className="px-5 py-3 flex items-start gap-3" data-testid="live-event">
-      {event.type === 'risk' ? (
-        <AlertTriangle className={`w-4 h-4 mt-0.5 ${tone}`} />
-      ) : (
-        <Activity className="w-4 h-4 mt-0.5 text-gray-400 dark:text-zinc-500" />
-      )}
+      <Activity className="w-4 h-4 mt-0.5 text-gray-400 dark:text-zinc-500" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           {event.symbol && (
@@ -113,10 +111,19 @@ function EventRow({ event }: { event: StopRiskEvent }) {
           <span className={`text-xs uppercase tracking-wide ${tone}`}>
             {event.code || event.event_type || event.type}
           </span>
+          {event.side && (
+            <span
+              className={`text-xs font-medium ${
+                event.side === 'SELL' ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
+              }`}
+            >
+              {event.side}
+            </span>
+          )}
           {event.status && (
             <span className="text-xs text-gray-400 dark:text-zinc-500">{event.status}</span>
           )}
-          <span className="text-xs text-gray-400 dark:text-zinc-600 ml-auto">{fmtTime(event.created_at)}</span>
+          <span className="text-xs text-gray-400 dark:text-zinc-600 ml-auto">{fmtTime(event.ts || event.created_at)}</span>
         </div>
         {event.message && (
           <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">{event.message}</p>
@@ -128,15 +135,18 @@ function EventRow({ event }: { event: StopRiskEvent }) {
 
 export default function VolatilityPuts({
   snapshot: snapshotProp,
+  ticks: ticksProp,
   connected: connectedProp,
   focusSymbol,
 }: {
   snapshot?: StopRiskSnapshot;
+  ticks?: PriceTicks;
   connected?: boolean;
   focusSymbol?: string;
 }) {
   const live = useStopEventStream();
   const snapshot = snapshotProp ?? live.snapshot;
+  const ticks = ticksProp ?? live.ticks;
   const connected = connectedProp ?? live.connected;
   const focus = (focusSymbol || '').toUpperCase();
 
@@ -148,11 +158,7 @@ export default function VolatilityPuts({
     stop: n.stop_price || 0,
   }));
 
-  const sortedEvents = [...snapshot.events].sort((a, b) => {
-    const ta = a.created_at ? Date.parse(a.created_at) : 0;
-    const tb = b.created_at ? Date.parse(b.created_at) : 0;
-    return tb - ta;
-  });
+  const sortedEvents = [...snapshot.events].sort((a, b) => eventTs(b) - eventTs(a));
 
   return (
     <div className="space-y-6">
@@ -208,6 +214,14 @@ export default function VolatilityPuts({
         ))}
       </div>
 
+      <EventPriceChart
+        events={snapshot.events}
+        ticks={ticks}
+        names={snapshot.names}
+        designated={[...DESIGNATED_SYMBOLS]}
+        focusSymbol={focus || undefined}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-zinc-950 rounded-lg border border-gray-200 dark:border-zinc-800 p-5">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Coverage</h3>
@@ -229,7 +243,7 @@ export default function VolatilityPuts({
           <div className="px-5 py-4 border-b border-gray-100 dark:border-zinc-900">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">Event feed</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Coverage gaps, concentration, stop placements
+              Last 120 engine order events
             </p>
           </div>
           <div className="divide-y divide-gray-100 dark:divide-zinc-900 max-h-[320px] overflow-y-auto">

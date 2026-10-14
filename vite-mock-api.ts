@@ -262,13 +262,36 @@ async function getMockResponse(pathname: string, params: URLSearchParams): Promi
       ],
       events: [
         {
-          type: 'risk',
-          code: 'coverage_gap',
+          type: 'engine',
+          id: 'mock-nbis-fill',
+          code: 'order_filled',
           symbol: 'NBIS',
-          severity: 'critical',
-          message: 'NBIS stop covers 35 of 120.126 shares (29%)',
+          side: 'SELL',
+          status: 'filled',
+          order_type: 'limit',
+          quantity: 50,
+          price: 207.9,
+          ts: '2026-10-13T23:50:00Z',
+          message: 'SELL 50 NBIS limit @ 207.90',
+        },
+        {
+          type: 'engine',
+          id: 'mock-nbis-stop',
+          code: 'order_queued',
+          symbol: 'NBIS',
+          side: 'SELL',
+          status: 'queued',
+          order_type: 'stop',
+          quantity: 35,
+          price: 194.96,
+          ts: '2026-10-13T23:55:00Z',
+          message: 'SELL 35 NBIS stop @ 194.96',
         },
       ],
+      prices: {
+        MU: { symbol: 'MU', price: 96, ts: new Date().toISOString() },
+        NBIS: { symbol: 'NBIS', price: 208.8 + Math.sin(Date.now() / 60000) * 2, ts: new Date().toISOString() },
+      },
     };
     return { status: 200, body: snapshot };
   }
