@@ -7,6 +7,11 @@
 //       → NBBO in force at each execution time (last quote at/before t) and the
 //         1-minute bar containing t (OHLC, volume, VWAP). Historical lookups are
 //         immutable, so they are cached in the trading DB's market_cache.
+//   GET /.netlify/functions/market-context?action=depth&symbol=NBIS&t=<iso>
+//       → the market around one execution: every NBBO update and every
+//         consolidated trade within ±30s (price, size, venue), for the
+//         execution-time depth view. Equity depth-of-book (L2) isn't in any
+//         feed the site has, so this is top-of-book plus the tape.
 //   GET /.netlify/functions/market-context?action=options&occ=NBIS261127C00220000,…
 //       → latest option snapshots: bid/ask with sizes, last trade, IV, greeks.
 //   GET /.netlify/functions/market-context?action=surface&symbol=NBIS
@@ -35,6 +40,11 @@ const FETCH_TIMEOUT_MS = 4000;   // Netlify sync functions die at 10s
 const QUOTE_LOOKBACK_MS = 10 * 60_000;
 const IMMUTABLE_AFTER_MS = 20 * 60_000; // SIP history is final (and queryable) after ~15 min
 const SURFACE_TTL_MS = 5 * 60_000;
+// Quotes span the same window as trades so every print is classified against
+// the NBBO in force when it printed
+const DEPTH_QUOTE_WINDOW_MS = 30_000;
+const DEPTH_TRADE_WINDOW_MS = 30_000;
+const DEPTH_SIDE_LIMIT = 1000; // per side of the fill, per series
 const SYMBOL_RE = /^[A-Z][A-Z0-9.]{0,9}$/;
 const OCC_RE = /^[A-Z]{1,6}\d{6}[CP]\d{8}$/;
 
@@ -180,6 +190,74 @@ async function handleFills(db, params, headers) {
   return respond(200, { ok: true, symbol, as_of: new Date(now).toISOString(), results });
 }
 
+// ── Depth around one execution ────────────────────────────────────────────────
+
+function mapTrade(tr) {
+  return { t: tr.t, price: tr.p, size: tr.s, exchange: tr.x ?? null, conditions: tr.c ?? [] };
+}
+
+/** One series (quotes|trades) on both sides of `atMs`: newest-first before, oldest-first after. */
+async function seriesAround(kind, symbol, atMs, windowMs, headers) {
+  const at = new Date(atMs).toISOString();
+  const from = new Date(atMs - windowMs).toISOString();
+  const to = new Date(atMs + windowMs).toISOString();
+  const base = `/v2/stocks/${symbol}/${kind}`;
+  return withFeed(async (feed) => {
+    const [before, after] = await Promise.all([
+      alpacaGet(`${base}?start=${from}&end=${at}&limit=${DEPTH_SIDE_LIMIT}&sort=desc&feed=${feed}`, headers),
+      alpacaGet(`${base}?start=${at}&end=${to}&limit=${DEPTH_SIDE_LIMIT}&sort=asc&feed=${feed}`, headers),
+    ]);
+    const b = before?.[kind] || [];
+    // Both windows include `at` itself — drop the overlap
+    const key = x => `${x.t}|${x.p ?? x.bp}|${x.s ?? x.bs}|${x.i ?? x.ap}`;
+    const seen = new Set(b.map(key));
+    const a = (after?.[kind] || []).filter(x => !seen.has(key(x)));
+    return {
+      rows: [...b.reverse(), ...a],
+      truncated: b.length >= DEPTH_SIDE_LIMIT || a.length >= DEPTH_SIDE_LIMIT,
+    };
+  });
+}
+
+async function handleDepth(db, params, headers) {
+  const symbol = (params.symbol || '').toUpperCase();
+  if (!SYMBOL_RE.test(symbol)) return respond(400, { ok: false, error: 'symbol is required' });
+  const atMs = Date.parse(params.t || '');
+  if (!Number.isFinite(atMs)) return respond(400, { ok: false, error: 't (ISO execution time) is required' });
+  const iso = new Date(atMs).toISOString();
+
+  const cacheKey = `market-context:depth:v2:${symbol}:${iso}`;
+  if (db) {
+    try {
+      const hit = await t.getMarketCache(db, cacheKey);
+      if (hit?.payload) return respond(200, { ...hit.payload, cached: true });
+    } catch { /* best-effort */ }
+  }
+
+  const [quotes, trades] = await Promise.all([
+    seriesAround('quotes', symbol, atMs, DEPTH_QUOTE_WINDOW_MS, headers),
+    seriesAround('trades', symbol, atMs, DEPTH_TRADE_WINDOW_MS, headers),
+  ]);
+  const payload = {
+    ok: true,
+    symbol,
+    t: iso,
+    session: sessionOf(atMs),
+    feed: quotes.feed,
+    window_ms: { quotes: DEPTH_QUOTE_WINDOW_MS, trades: DEPTH_TRADE_WINDOW_MS },
+    quotes: quotes.value.rows.map(q => {
+      const m = mapQuote(q, atMs);
+      return { t: m.time, bid: m.bid, ask: m.ask, bid_size: m.bid_size, ask_size: m.ask_size, bid_exchange: m.bid_exchange, ask_exchange: m.ask_exchange };
+    }),
+    trades: trades.value.rows.map(mapTrade),
+    truncated: { quotes: quotes.value.truncated, trades: trades.value.truncated },
+  };
+  if (db && Date.now() - atMs > IMMUTABLE_AFTER_MS) {
+    try { await t.setMarketCache(db, cacheKey, 'market-context', payload); } catch { /* best-effort */ }
+  }
+  return respond(200, { ...payload, cached: false });
+}
+
 // ── Option snapshots ──────────────────────────────────────────────────────────
 
 function mapOptionSnapshot(occ, s) {
@@ -247,11 +325,13 @@ exports.handler = async (event) => {
   try {
     if (action === 'surface') return await handleSurface(db, params);
     const headers = alpacaHeaders();
-    if (action === 'fills' || action === 'options') {
+    if (action === 'fills' || action === 'depth' || action === 'options') {
       if (!headers) return respond(503, { ok: false, error: 'ALPACA_API_KEY / ALPACA_SECRET_KEY are not configured on the site' });
-      return action === 'fills' ? await handleFills(db, params, headers) : await handleOptions(params, headers);
+      if (action === 'fills') return await handleFills(db, params, headers);
+      if (action === 'depth') return await handleDepth(db, params, headers);
+      return await handleOptions(params, headers);
     }
-    return respond(400, { ok: false, error: 'action must be one of: fills, options, surface' });
+    return respond(400, { ok: false, error: 'action must be one of: fills, depth, options, surface' });
   } catch (err) {
     console.error('market-context error:', err);
     return respond(502, { ok: false, error: err.message || 'market-context failed' });

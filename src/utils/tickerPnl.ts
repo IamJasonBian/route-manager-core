@@ -27,6 +27,9 @@ export const MIN_RELIABLE_DAYS = 20;
 export const VOL_WINDOW = 30;
 const Z_95 = 1.645;
 
+/** Share counts closer than this are equal (fractional-share float noise). */
+const SHARE_EPSILON = 1e-6;
+
 const OPEN_STATES = new Set(['queued', 'unconfirmed', 'confirmed', 'pending', 'partially_filled', 'new']);
 
 function r2(n: number): number {
@@ -166,7 +169,9 @@ export function inferOpeningShares(orders: SnapshotOrder[], symbol: string, brok
     if (shares < -shortfall) shortfall = -shares;
   }
   const reconcile = brokerQuantity != null ? brokerQuantity - shares : 0;
-  return Math.max(shortfall, reconcile, 0);
+  const opening = Math.max(shortfall, reconcile, 0);
+  // Fractional share counts leave float dust (52.126027 − 52.12602699999999)
+  return opening < SHARE_EPSILON ? 0 : opening;
 }
 
 /**

@@ -131,6 +131,13 @@ describe('buildStockLedger', () => {
 });
 
 describe('inferOpeningShares', () => {
+  it('ignores fractional-share float noise', () => {
+    // 0.7 + 0.1 = 0.7999999999999999 in floating point, 1.1e-16 short of the broker's 0.8
+    const orders = [stock('BUY', 0.7, 186.75, '2026-10-01T15:00:00Z'), stock('BUY', 0.1, 185, '2026-10-03T15:00:00Z')];
+    expect(inferOpeningShares(orders, 'NBIS', 0.8)).toBe(0);
+    expect(inferOpeningShares(orders, 'NBIS', 0.9)).toBeCloseTo(0.1, 10);
+  });
+
   it('reconciles the ledger with the broker position', () => {
     expect(inferOpeningShares(NBIS_HISTORY, 'NBIS', 2)).toBe(0);
     expect(inferOpeningShares(NBIS_HISTORY, 'NBIS', 12)).toBe(10);

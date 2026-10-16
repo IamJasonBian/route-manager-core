@@ -4,6 +4,7 @@
 import { apiJson } from './http';
 import type { FillMarketContext } from '../utils/fillQuality';
 import type { VolSurfaceGrid } from '../utils/volCalibration';
+import type { ExecutionDepth } from '../utils/executionDepth';
 
 const MAX_TIMES_PER_REQUEST = 30;
 
@@ -77,4 +78,13 @@ export interface RefreshResult {
 /** Pull fresh orders/positions from Robinhood into the trading DB (server floors it to once per 60s). */
 export async function triggerSnapshotRefresh(): Promise<RefreshResult> {
   return apiJson<RefreshResult>('/snapshot-refresh', { timeoutMs: 30_000 });
+}
+
+/** Quotes (±5s) and consolidated trades (±30s) around one execution. */
+export async function getExecutionDepth(symbol: string, at: string): Promise<ExecutionDepth> {
+  const body = await apiJson<ExecutionDepth & { error?: string }>(
+    `/market-context?action=depth&symbol=${encodeURIComponent(symbol)}&t=${encodeURIComponent(at)}`
+  );
+  if (!body.ok) throw new Error(body.error || 'depth lookup failed');
+  return body;
 }

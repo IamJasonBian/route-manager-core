@@ -41,8 +41,10 @@ const mockFillContext = jest.fn();
 const mockOptionSnapshots = jest.fn();
 const mockSurface = jest.fn();
 const mockRefresh = jest.fn();
+const mockDepth = jest.fn();
 
 jest.mock('../services/marketContextService', () => ({
+  getExecutionDepth: (...args: unknown[]) => mockDepth(...args),
   getFillContext: (...args: unknown[]) => mockFillContext(...args),
   getOptionSnapshots: (...args: unknown[]) => mockOptionSnapshots(...args),
   getVolSurface: (...args: unknown[]) => mockSurface(...args),
@@ -159,6 +161,15 @@ describe('TickerPnLPage', () => {
       iv: 0.885, greeks: { delta: 0.3468 },
     }]);
     mockRefresh.mockResolvedValue({ ok: false, error: 'auth box unreachable' });
+    mockDepth.mockImplementation((_symbol: string, at: string) => Promise.resolve({
+      ok: true, symbol: 'NBIS', t: at, session: 'regular', feed: 'sip', window_ms: { quotes: 5000, trades: 30000 },
+      quotes: [{ t: at, bid: 184.99, ask: 185.0, bid_size: 300, ask_size: 100, bid_exchange: 'Q', ask_exchange: 'P' }],
+      trades: [
+        { t: at, price: 185.0, size: 110, exchange: 'D', conditions: [] },
+        { t: at, price: 185.01, size: 40, exchange: 'Q', conditions: [] },
+      ],
+      truncated: { quotes: false, trades: false },
+    }));
   });
 
   it('shows realized, unrealized and total P&L from the DB fills', async () => {
@@ -191,6 +202,20 @@ describe('TickerPnLPage', () => {
     expect(text).toMatch(/Cost vs mid\+\$\d/);
   });
 
+  it('opens the market depth at execution for a fill', async () => {
+    const { container, getAllByRole } = await renderPage();
+    await waitFor(() => expect(container.textContent).toContain('11 of 11 fills have a quote'));
+    // Newest fill first: the Oct 15 sale of 110 @ $185
+    await act(async () => { fireEvent.click(getAllByRole('button', { name: 'Show market depth at execution' })[0]); });
+    await waitFor(() => expect(container.textContent).toContain('Tape ±30 s'));
+    const text = container.textContent ?? '';
+    expect(mockDepth).toHaveBeenCalledWith('NBIS', '2026-10-15T15:00:00.000Z');
+    expect(text).toContain('150 sh in 2 prints');
+    expect(text).toContain('our sell');
+    expect(text).toMatch(/Our print: .* on D/);
+    expect(text).not.toContain('closest of');
+  });
+
   it('shows the live quote, IV and implied move for a queued option', async () => {
     const { container } = await renderPage();
     await waitFor(() => expect(container.textContent).toContain('$10.06 × 291'));
@@ -216,6 +241,7 @@ describe('TickerPnLPage', () => {
     await act(async () => { fireEvent.click(getByText('Sync now')); });
     await waitFor(() => expect(container.textContent).toContain('Sync: auth box unreachable'));
     expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Connect Robinhood on Configure');
   });
 
   it('flags a short sample instead of hiding Sharpe', async () => {

@@ -531,6 +531,11 @@ export default function TickerPnLPage() {
         {sync.message && (
           <span className={sync.ok ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>Sync: {sync.message}</span>
         )}
+        {sync.ok === false && (
+          <Link to="/configure" className="underline text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+            Connect Robinhood on Configure
+          </Link>
+        )}
       </div>
 
       {model.warnings.length > 0 && (
@@ -694,7 +699,7 @@ export default function TickerPnLPage() {
             ? 'Loading the NBBO and minute bar at each fill…'
             : fillCtxState.error
               ? `Market data unavailable: ${fillCtxState.error}`
-              : `Each fill vs. the consolidated NBBO in force when it executed (last quote at or before the fill) and that minute's VWAP · ${fillQuality.summary.with_quote} of ${fillQuality.summary.fills} fills have a quote`
+              : `Each fill vs. the consolidated NBBO in force when it executed (last quote at or before the fill) and that minute's VWAP · ${fillQuality.summary.with_quote} of ${fillQuality.summary.fills} fills have a quote · "Depth" opens the market at execution: the NBBO and the tape ±30 s, by price`
         }
       >
         <div className="p-4 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -738,7 +743,7 @@ export default function TickerPnLPage() {
         </div>
         <FillQualityGroups summary={fillQuality.summary} />
         <div className="border-t border-gray-200 dark:border-zinc-700">
-          <FillQualityTable rows={fillQuality.rows} />
+          <FillQualityTable rows={fillQuality.rows} symbol={symbol} />
         </div>
       </Card>
 

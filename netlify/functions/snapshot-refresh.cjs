@@ -1,6 +1,8 @@
 // snapshot-refresh.cjs
 // Refreshes the order-book snapshot WITHOUT the Render engine:
-//   auth box (RH_AUTH_SERVICE_URL, /token) → Robinhood API pulls →
+//   auth box (RH_AUTH_SERVICE_URL, /token) — or, when the auth box is down,
+//   the site's own Robinhood session (Configure → Connect Robinhood, stored
+//   by robinhood-auth in the robinhood-auth blob store) → Robinhood API pulls →
 //     1. fresh state-logs blob (positions, options, cash, equity, crypto —
 //        what the engine used to publish)
 //     2. trading-DB upsert of stock + option orders (also closes backfill gaps)
@@ -23,6 +25,7 @@
 
 const t = require('./lib/tradingDb.cjs');
 const { fetchWithTimeout } = require('./lib/http.cjs');
+const tokenStore = require('./lib/tokenStore.cjs');
 
 const RH = 'https://api.robinhood.com';
 const SITE_ID = process.env.NETLIFY_SITE_ID || '3d014fc3-e919-4b4d-b374-e8606dee50df';
@@ -65,6 +68,24 @@ async function getRhToken(errors) {
     const raw = text.trim();
     if (raw && !raw.startsWith('<')) return raw; // plain-text token
     throw new Error(`auth box returned unparseable body: ${raw.slice(0, 120)}`);
+  }
+}
+
+/**
+ * Auth box first; if it is unreachable or misconfigured, fall back to the
+ * site's own Robinhood session so a down auth box doesn't freeze the book.
+ */
+async function resolveRhToken(errors, deps = { getRhToken, getSiteToken: () => tokenStore.getToken() }) {
+  try {
+    return { token: await deps.getRhToken(errors), source: 'auth-box' };
+  } catch (boxErr) {
+    let siteToken = null;
+    try { siteToken = await deps.getSiteToken(); } catch { /* treated as no session */ }
+    if (siteToken) {
+      errors.push(`${boxErr.message}; used the site's Robinhood session instead`);
+      return { token: siteToken, source: 'site-session' };
+    }
+    throw new Error(`${boxErr.message}. No site Robinhood session either: connect one on the Configure page (approve in the Robinhood app), or restore the auth box.`);
   }
 }
 
@@ -365,8 +386,8 @@ async function runSnapshotRefresh({ full = false, dry = false, force = false } =
     }
   }
 
-  const rhToken = await getRhToken(errors);
-  steps.auth = 'ok';
+  const { token: rhToken, source: authSource } = await resolveRhToken(errors);
+  steps.auth = authSource;
 
   const rh = rhClient(rhToken);
   const { blob, stockOrdersOut, optionOrdersOut, cryptoValue } = await pullSnapshot(rh, { full }, errors);
@@ -420,6 +441,7 @@ async function runSnapshotRefresh({ full = false, dry = false, force = false } =
 }
 
 module.exports.runSnapshotRefresh = runSnapshotRefresh;
+module.exports.resolveRhToken = resolveRhToken;
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS, body: '' };
