@@ -1,4 +1,4 @@
-// Token Storage using Netlify Blobs (production) or file system (local dev)
+// Token Storage using Netlify Blobs (deployed) or file system (local dev)
 // Provides persistent token storage across function invocations
 
 const fs = require('fs');
@@ -10,72 +10,67 @@ const ROBINHOOD_API_BASE = 'https://api.robinhood.com';
 const STORE_NAME = 'robinhood-auth';
 const TOKEN_KEY = 'session';
 const DEVICE_KEY = 'device';
+const SITE_ID = process.env.NETLIFY_SITE_ID || '3d014fc3-e919-4b4d-b374-e8606dee50df';
 
-// Local file fallback path
-const LOCAL_TOKEN_FILE = path.join(os.homedir(), '.tokens', 'robinhood-blobs.json');
+// Local file fallback path ($HOME first, as os.homedir() reads it on POSIX)
+const LOCAL_TOKEN_FILE = path.join(process.env.HOME || os.homedir(), '.tokens', 'robinhood-blobs.json');
 
 // In-memory cache (resets on cold start, but Blobs persist)
 let cachedToken = null;
 let cacheExpiry = null;
 
-// Check if we're running in Netlify PRODUCTION environment (not local dev)
-// DEPLOY_ID is only set in actual Netlify deployments, not in `netlify dev`
-function isNetlifyProduction() {
-  return !!(process.env.DEPLOY_ID && process.env.SITE_ID);
-}
+/** File-backed stand-in for the blob store in local development. */
+const localStore = {
+  async get(key, options) {
+    try {
+      if (!fs.existsSync(LOCAL_TOKEN_FILE)) return null;
+      const data = JSON.parse(fs.readFileSync(LOCAL_TOKEN_FILE, 'utf8'));
+      const value = data[key];
+      if (!value) return null;
+      return options?.type === 'json' ? value : JSON.stringify(value);
+    } catch (e) {
+      console.error('[LOCAL_STORE] Error reading:', e.message);
+      return null;
+    }
+  },
+  // Write failures propagate so callers never report a save that didn't happen
+  async setJSON(key, value) {
+    const dir = path.dirname(LOCAL_TOKEN_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    let data = {};
+    if (fs.existsSync(LOCAL_TOKEN_FILE)) {
+      data = JSON.parse(fs.readFileSync(LOCAL_TOKEN_FILE, 'utf8'));
+    }
+    data[key] = value;
+    fs.writeFileSync(LOCAL_TOKEN_FILE, JSON.stringify(data, null, 2));
+  },
+  async delete(key) {
+    if (!fs.existsSync(LOCAL_TOKEN_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(LOCAL_TOKEN_FILE, 'utf8'));
+    delete data[key];
+    fs.writeFileSync(LOCAL_TOKEN_FILE, JSON.stringify(data, null, 2));
+  },
+};
 
 /**
- * Get the Netlify Blobs store.
- * Falls back to local file storage when not in Netlify environment.
+ * The robinhood-auth blob store. Deployed functions reach Blobs with explicit
+ * credentials (NETLIFY_AUTH_TOKEN), like the site's other stores: CLI deploys
+ * get no automatic Blobs context. `netlify dev` and tests use a local file.
  */
 async function getStore() {
-  if (!isNetlifyProduction()) {
-    // Return a file-based store for local development
-    return {
-      async get(key, options) {
-        try {
-          if (!fs.existsSync(LOCAL_TOKEN_FILE)) return null;
-          const data = JSON.parse(fs.readFileSync(LOCAL_TOKEN_FILE, 'utf8'));
-          const value = data[key];
-          if (!value) return null;
-          return options?.type === 'json' ? value : JSON.stringify(value);
-        } catch (e) {
-          console.error('[LOCAL_STORE] Error reading:', e.message);
-          return null;
-        }
-      },
-      async setJSON(key, value) {
-        try {
-          const dir = path.dirname(LOCAL_TOKEN_FILE);
-          if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-          }
-          let data = {};
-          if (fs.existsSync(LOCAL_TOKEN_FILE)) {
-            data = JSON.parse(fs.readFileSync(LOCAL_TOKEN_FILE, 'utf8'));
-          }
-          data[key] = value;
-          fs.writeFileSync(LOCAL_TOKEN_FILE, JSON.stringify(data, null, 2));
-        } catch (e) {
-          console.error('[LOCAL_STORE] Error writing:', e.message);
-        }
-      },
-      async delete(key) {
-        try {
-          if (!fs.existsSync(LOCAL_TOKEN_FILE)) return;
-          const data = JSON.parse(fs.readFileSync(LOCAL_TOKEN_FILE, 'utf8'));
-          delete data[key];
-          fs.writeFileSync(LOCAL_TOKEN_FILE, JSON.stringify(data, null, 2));
-        } catch (e) {
-          console.error('[LOCAL_STORE] Error deleting:', e.message);
-        }
-      },
-    };
+  if (process.env.NETLIFY_DEV === 'true') return localStore;
+  const token = process.env.NETLIFY_AUTH_TOKEN;
+  if (token) {
+    const { getStore: blobStore } = require('@netlify/blobs');
+    return blobStore({ name: STORE_NAME, siteID: SITE_ID, token });
   }
-
-  // Production: use Netlify Blobs
-  const { getStore } = await import('@netlify/blobs');
-  return getStore(STORE_NAME);
+  // Deployed without credentials: a local file would live in one instance's /tmp
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT) {
+    throw new Error('NETLIFY_AUTH_TOKEN is not set, so the Robinhood session cannot be stored');
+  }
+  return localStore;
 }
 
 /**
