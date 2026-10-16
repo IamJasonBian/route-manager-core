@@ -1,7 +1,9 @@
-// Pins two enriched-snapshot math bugs that inflated dashboard numbers:
+// Pins enriched-snapshot math bugs that skewed dashboard numbers:
 //   - realized stock P&L for a period dropped cost basis of shares bought
 //     before the period, so a sell inside it counted full proceeds as profit
 //   - profit_loss_pct (already a percent) was re-scaled ×100 when |pct| < 1
+//   - fills were ordered by submission time, so stops that triggered days
+//     after they were placed were matched against the wrong average cost
 
 const es = require('../../netlify/functions/enriched-snapshot.cjs');
 
@@ -37,6 +39,27 @@ describe('computeStockPnl', () => {
     ], cutoff);
 
     expect(pnl.total_realized_pnl).toBe(100); // (160 - 150) × 10
+  });
+
+  test('orders are matched in fill order, not submission order', () => {
+    // A stop placed 20 days ago that only triggered 2 days ago must be
+    // matched against the add-on bought 10 days ago, as the broker does
+    const stop = { ...order('sell', 20, 90, 20), updated_at: ago(2) };
+    const pnl = es.computeStockPnl([
+      order('buy', 10, 100, 30),
+      stop,
+      order('buy', 10, 80, 10),   // avg cost now (1000 + 800) / 20 = 90
+    ], new Date(0));
+
+    expect(pnl.total_realized_pnl).toBe(0); // (90 − 90) × 20, not a loss at the old 100 basis
+    expect(pnl.symbols[0].shares_held).toBe(0);
+  });
+
+  test('the period window uses the fill time', () => {
+    const stop = { ...order('sell', 10, 110, 20), updated_at: ago(2) };
+    const pnl = es.computeStockPnl([order('buy', 10, 100, 30), stop], cutoff);
+    expect(pnl.total_realized_pnl).toBe(100);
+    expect(pnl.filled_count).toBe(1);
   });
 
   test('symbols with no fills in the window are omitted', () => {

@@ -39,12 +39,23 @@ function periodCutoff(period) {
 
 function r2(n) { return Math.round(n * 100) / 100; }
 
+// When a filled order executed. Stops and GTC limits often fill days after
+// they were placed, so submission time (created_at) mis-orders fills and
+// matches sells against the wrong average cost; a terminal order's
+// updated_at is its last transaction.
+function fillTime(o) {
+  const created = new Date(o.created_at).getTime();
+  const updated = new Date(o.updated_at).getTime();
+  if (Number.isFinite(updated) && (!Number.isFinite(created) || updated >= created)) return updated;
+  return created;
+}
+
 function computeStockPnl(orders, cutoff) {
   // Cost basis is built from every fill, so a sell inside the window is
   // matched against shares bought before it; only in-window fills count
   // toward realized P&L, volumes, and counts.
   const filled = orders.filter(o => o.state === 'filled' && o.symbol)
-    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    .sort((a, b) => fillTime(a) - fillTime(b));
 
   const book = {};
   const active = new Set();
@@ -61,7 +72,7 @@ function computeStockPnl(orders, cutoff) {
     const qty   = parseFloat(o.filled_quantity ?? o.quantity ?? 0) || 0;
     const price = parseFloat(o.average_price   ?? o.limit_price ?? 0) || 0;
     const total = qty * price;
-    const inWindow = new Date(o.created_at) >= cutoff;
+    const inWindow = fillTime(o) >= cutoff.getTime();
     if (inWindow) { active.add(sym); filledCount++; }
 
     if ((o.side || '').toUpperCase() === 'BUY') {

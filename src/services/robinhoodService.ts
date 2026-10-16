@@ -267,6 +267,37 @@ export async function getDbOrders(scope: 'open' | 'historical' | 'all' = 'all'):
   return env.data;
 }
 
+/**
+ * Every DB order (all buckets) for one ticker. db-orders pages over the whole
+ * table before filtering by symbol, so walk pages until the table is exhausted
+ * (capped at `maxPages` × 1000 rows per table).
+ */
+export async function getDbOrdersForSymbol(symbol: string, maxPages: number = 10): Promise<DbOrders & { truncated: boolean }> {
+  const limit = 1000;
+  const merged: DbOrders = {
+    open_orders: [], open_option_orders: [],
+    historical_orders: [], historical_option_orders: [],
+    untracked_orders: [], untracked_option_orders: [],
+  };
+  let page = 0;
+  let hasMore = true;
+  while (hasMore && page < maxPages) {
+    const env = await fetchDb<DbOrders>(
+      `/db-orders?scope=all&type=all&symbol=${encodeURIComponent(symbol)}&limit=${limit}&offset=${page * limit}`
+    );
+    const d = env.data;
+    merged.open_orders.push(...(d.open_orders ?? []));
+    merged.open_option_orders.push(...(d.open_option_orders ?? []));
+    merged.historical_orders.push(...(d.historical_orders ?? []));
+    merged.historical_option_orders.push(...(d.historical_option_orders ?? []));
+    merged.untracked_orders!.push(...(d.untracked_orders ?? []));
+    merged.untracked_option_orders!.push(...(d.untracked_option_orders ?? []));
+    hasMore = Boolean(d.page?.has_more);
+    page++;
+  }
+  return { ...merged, truncated: hasMore };
+}
+
 /** Bot activity from the trading DB, mapped onto the existing BotAction shape. */
 export async function getDbBotActivity(limit: number = 50): Promise<{ actions: BotAction[]; total: number }> {
   const env = await fetchDb<{ events: DbBotEvent[] }>(`/db-bot-activity?limit=${limit}`);

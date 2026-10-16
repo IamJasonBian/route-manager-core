@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Bitcoin, LayoutDashboard, GitCompare, TrendingUp, FlaskConical, Moon, Sun, Menu, X, Settings, Layers, PieChart, Newspaper } from 'lucide-react';
+import { Bitcoin, LayoutDashboard, GitCompare, TrendingUp, FlaskConical, Moon, Sun, Menu, X, Settings, Layers, PieChart, Newspaper, Target } from 'lucide-react';
 import { ThemeProvider, useTheme, FontMode } from './contexts/ThemeContext';
 
 import LandingPage from './pages/LandingPage';
@@ -15,6 +15,7 @@ const StrategiesPage = lazy(() => import('./pages/StrategiesPage'));
 const ConfigurePage = lazy(() => import('./pages/ConfigurePage'));
 const MarketDepthPage = lazy(() => import('./pages/MarketDepthPage'));
 const NewsPage = lazy(() => import('./pages/NewsPage'));
+const TickerPnLPage = lazy(() => import('./pages/TickerPnLPage'));
 
 function PageFallback() {
   return (
@@ -37,13 +38,20 @@ const NAV_ITEMS = [
   { to: '/depth', icon: Layers, label: 'Depth' },
   { to: '/news', icon: Newspaper, label: 'News' },
   { to: '/pnl-allocation', icon: PieChart, label: 'P&L & Allocation' },
+  { to: '/ticker/NBIS', icon: Target, label: 'Ticker P&L' },
   { to: '/strategies', icon: FlaskConical, label: 'Strategies' },
   { to: '/configure', icon: Settings, label: 'Configure' },
 ];
 
+/** Exact match, except /ticker/* which stays active whichever ticker is open. */
+function isNavActive(pathname: string, to: string): boolean {
+  if (to.startsWith('/ticker/')) return pathname.startsWith('/ticker');
+  return pathname === to;
+}
+
 function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
   const location = useLocation();
-  const isActive = location.pathname === to;
+  const isActive = isNavActive(location.pathname, to);
 
   return (
     <Link
@@ -136,7 +144,7 @@ function AppShell() {
         {mobileOpen && (
           <div className="md:hidden border-t border-gray-100 dark:border-zinc-900 bg-white dark:bg-zinc-950">
             {NAV_ITEMS.map(({ to, icon: Icon, label }) => {
-              const isActive = location.pathname === to;
+              const isActive = isNavActive(location.pathname, to);
               return (
                 <Link
                   key={to}
@@ -166,6 +174,8 @@ function AppShell() {
             <Route path="/depth" element={<MarketDepthPage />} />
             <Route path="/news" element={<NewsPage />} />
             <Route path="/pnl-allocation" element={<PnLAllocationPage />} />
+            <Route path="/ticker" element={<TickerPnLPage />} />
+            <Route path="/ticker/:symbol" element={<TickerPnLPage />} />
             <Route path="/configure" element={<ConfigurePage />} />
             <Route path="/strategies" element={<StrategiesPage />} />
           </Routes>
