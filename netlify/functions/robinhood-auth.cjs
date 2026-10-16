@@ -10,6 +10,10 @@
 // Posting `continue` to the inquiry then approves the workflow, and the
 // password grant returns a token for this device.
 //
+// Robinhood hands a device the same pending workflow until it lapses, even
+// once its prompt has expired, so a login whose approval went stale moves to
+// a new device id (kept in the blob store) to get a fresh one.
+//
 // Function instances don't share memory, so every step is stateless: connect
 // returns the ids in `verification` and the client passes them back.
 //
@@ -19,6 +23,7 @@
 //   ?action=mfa&code=[&workflowId=&machineId=&challengeId=]
 //   ?action=disconnect
 
+const crypto = require('crypto');
 const tokenStore = require('./lib/tokenStore.cjs');
 const { CORS, fetchWithTimeout } = require('./lib/http.cjs');
 
@@ -41,7 +46,8 @@ function httpError(statusCode, message) {
   return Object.assign(new Error(message), { statusCode });
 }
 
-function generateDeviceToken() {
+/** Device id before the site has stored one: RH_DEVICE_TOKEN, else a hash of RH_USER. */
+function fallbackDeviceToken() {
   if (process.env.RH_DEVICE_TOKEN) {
     return process.env.RH_DEVICE_TOKEN;
   }
@@ -55,10 +61,16 @@ function generateDeviceToken() {
   return `${Math.abs(hash).toString(16).padStart(8, '0')}-0000-0000-0000-000000000000`;
 }
 
-/** Remaining time for the next Robinhood call in this invocation. */
-function deadline(ms = BUDGET_MS) {
+/**
+ * Per-invocation context: the device id this login uses and the time left
+ * for the next Robinhood call.
+ */
+async function loginContext(ms = BUDGET_MS) {
   const end = Date.now() + ms;
-  return () => Math.max(1000, end - Date.now());
+  return {
+    device: (await tokenStore.getDeviceToken()) || fallbackDeviceToken(),
+    left: () => Math.max(1000, end - Date.now()),
+  };
 }
 
 /** Robinhood request → { status, ok, data }; HTTP errors don't throw. */
@@ -91,7 +103,7 @@ function reason(data) {
   return typeof r === 'string' ? r : JSON.stringify(data).slice(0, 200);
 }
 
-function passwordGrant(left, extra = {}, headers = {}) {
+async function passwordGrant(ctx, extra = {}, headers = {}) {
   const username = process.env.RH_USER;
   const password = process.env.RH_PASS;
   if (!username || !password) {
@@ -106,11 +118,11 @@ function passwordGrant(left, extra = {}, headers = {}) {
       expires_in: '86400',
       username,
       password,
-      device_token: generateDeviceToken(),
+      device_token: ctx.device,
       ...extra,
     },
     headers,
-  }, left());
+  }, ctx.left());
 }
 
 async function saveSession(data) {
@@ -147,38 +159,27 @@ function pendingResult(verification, challenge) {
 }
 
 /** The approval's current challenge: { id, type: prompt | sms | email, status }, or null. */
-async function readChallenge(machineId, left) {
-  const { ok, status, data } = await rh(`/pathfinder/inquiries/${encodeURIComponent(machineId)}/user_view/`, {}, left());
+async function readChallenge(machineId, ctx) {
+  const { ok, status, data } = await rh(`/pathfinder/inquiries/${encodeURIComponent(machineId)}/user_view/`, {}, ctx.left());
   if (!ok) throw httpError(502, `Robinhood approval lookup failed (${status}): ${reason(data)}`);
   const c = data.context?.sheriff_challenge || data.type_context?.context?.sheriff_challenge;
   return c && c.id ? { id: c.id, type: c.type, status: c.status } : null;
 }
 
-async function startApproval(workflowId, left) {
-  const machine = await rh('/pathfinder/user_machine/', {
-    method: 'POST',
-    json: { device_id: generateDeviceToken(), flow: 'suv', input: { workflow_id: workflowId } },
-  }, left());
-  if (!machine.ok || !machine.data.id) {
-    throw httpError(502, `Robinhood didn't start the device approval (${machine.status}): ${reason(machine.data)}`);
-  }
-  const verification = { workflowId, machineId: machine.data.id };
-  // Usually issued at once; if not, verify picks it up
-  let challenge = null;
-  try {
-    challenge = await readChallenge(verification.machineId, left);
-  } catch (e) {
-    console.warn('[AUTH] Challenge lookup after start:', e.message);
-  }
-  return pendingResult(verification, challenge);
+/** issued | validated | expired | …, asking the app prompt's own status when it has one. */
+async function challengeState(challenge, ctx) {
+  if (challenge.status === 'validated' || challenge.type !== 'prompt') return challenge.status;
+  const prompt = await rh(`/push/${encodeURIComponent(challenge.id)}/get_prompts_status/`, {}, ctx.left());
+  if (!prompt.ok) throw httpError(502, `Robinhood prompt status failed (${prompt.status}): ${reason(prompt.data)}`);
+  return prompt.data.challenge_status || challenge.status;
 }
 
 /** Approve the workflow, then log in again for this device's token. */
-async function finishApproval(verification, left) {
+async function finishApproval(verification, ctx) {
   const cont = await rh(`/pathfinder/inquiries/${encodeURIComponent(verification.machineId)}/user_view/`, {
     method: 'POST',
     json: { sequence: 0, user_input: { status: 'continue' } },
-  }, left());
+  }, ctx.left());
   const result = cont.data.type_context?.result || cont.data.verification_workflow?.workflow_status || null;
   if (result !== 'workflow_status_approved') {
     return {
@@ -187,30 +188,60 @@ async function finishApproval(verification, left) {
       message: `Approved; Robinhood is still finalizing the login (${result || `HTTP ${cont.status}`}). Press Check again.`,
     };
   }
-  const grant = await passwordGrant(left);
+  const grant = await passwordGrant(ctx);
   if (grant.data.access_token) return saveSession(grant.data);
   throw httpError(502, `Robinhood approved the device but the login returned no session (${grant.status}): ${reason(grant.data)}`);
 }
 
 /**
- * Start a login. Returns the verification step Robinhood asks for, if any.
+ * Start (or resume) the device approval for a login's workflow. With
+ * `renewStale`, an approval that already lapsed moves to a new device.
  */
-async function initiateAuth() {
-  const left = deadline();
+async function startApproval(workflowId, ctx, { renewStale = false } = {}) {
+  const machine = await rh('/pathfinder/user_machine/', {
+    method: 'POST',
+    json: { device_id: ctx.device, flow: 'suv', input: { workflow_id: workflowId } },
+  }, ctx.left());
+  if (!machine.ok || !machine.data.id) {
+    throw httpError(502, `Robinhood didn't start the device approval (${machine.status}): ${reason(machine.data)}`);
+  }
+  const verification = { workflowId, machineId: machine.data.id };
 
-  // Check if we already have a valid token
-  const existingToken = await tokenStore.getToken();
-  if (existingToken && await tokenStore.validateToken(existingToken)) {
-    return { authenticated: true, message: 'Already authenticated' };
+  // Usually issued at once; if not, verify picks it up
+  let challenge = null;
+  let state = null;
+  try {
+    challenge = await readChallenge(verification.machineId, ctx);
+    if (challenge) state = await challengeState(challenge, ctx);
+  } catch (e) {
+    console.warn('[AUTH] Challenge lookup after start:', e.message);
   }
 
-  console.log('[AUTH] Initiating authentication');
-  const { status, data } = await passwordGrant(left);
+  if (state === 'validated') return finishApproval({ ...verification, challengeId: challenge.id }, ctx);
+  if (CHALLENGE_FAILED.has(state) && renewStale) return loginAsNewDevice(ctx);
+  return pendingResult(verification, challenge);
+}
 
+/**
+ * Robinhood keeps handing this device its lapsed workflow; log in as a new
+ * device (stored for later logins) to get a fresh approval.
+ */
+async function loginAsNewDevice(ctx) {
+  const device = crypto.randomUUID();
+  if (!(await tokenStore.setDeviceToken(device))) {
+    throw new Error('The approval for this device expired and a new device id could not be saved');
+  }
+  console.log('[AUTH] Approval for the previous device lapsed; logging in as a new device');
+  ctx.device = device;
+  return handleGrant(await passwordGrant(ctx), ctx, { renewStale: false });
+}
+
+/** Act on the password grant: store the session, or start what Robinhood asks for. */
+async function handleGrant({ status, data }, ctx, { renewStale }) {
   if (data.access_token) return saveSession(data);
 
   if (data.verification_workflow?.id) {
-    return startApproval(data.verification_workflow.id, left);
+    return startApproval(data.verification_workflow.id, ctx, { renewStale });
   }
 
   // Account MFA (authenticator app, or a texted code)
@@ -248,27 +279,36 @@ async function initiateAuth() {
 }
 
 /**
+ * Start a login. Returns the verification step Robinhood asks for, if any.
+ */
+async function initiateAuth() {
+  const ctx = await loginContext();
+
+  // Check if we already have a valid token
+  const existingToken = await tokenStore.getToken();
+  if (existingToken && await tokenStore.validateToken(existingToken)) {
+    return { authenticated: true, message: 'Already authenticated' };
+  }
+
+  console.log('[AUTH] Initiating authentication');
+  return handleGrant(await passwordGrant(ctx), ctx, { renewStale: true });
+}
+
+/**
  * Poll the device approval; completes the login once it's approved.
  */
 async function checkVerification(verification) {
-  const left = deadline();
   const { workflowId, machineId } = verification;
-  if (!machineId) {
-    if (!workflowId) {
-      return { authenticated: false, status: 'no_pending', message: 'No login in progress. Press Start to begin.' };
-    }
-    return startApproval(workflowId, left);
+  if (!machineId && !workflowId) {
+    return { authenticated: false, status: 'no_pending', message: 'No login in progress. Press Start to begin.' };
   }
+  const ctx = await loginContext();
+  if (!machineId) return startApproval(workflowId, ctx);
 
-  const challenge = await readChallenge(machineId, left);
+  const challenge = await readChallenge(machineId, ctx);
   if (!challenge) return pendingResult(verification, null);
 
-  let state = challenge.status;
-  if (state !== 'validated' && challenge.type === 'prompt') {
-    const prompt = await rh(`/push/${encodeURIComponent(challenge.id)}/get_prompts_status/`, {}, left());
-    if (!prompt.ok) throw httpError(502, `Robinhood prompt status failed (${prompt.status}): ${reason(prompt.data)}`);
-    state = prompt.data.challenge_status || state;
-  }
+  const state = await challengeState(challenge, ctx);
   if (CHALLENGE_FAILED.has(state)) {
     return {
       authenticated: false,
@@ -277,7 +317,7 @@ async function checkVerification(verification) {
     };
   }
   if (state !== 'validated') return pendingResult(verification, challenge);
-  return finishApproval({ ...verification, challengeId: challenge.id }, left);
+  return finishApproval({ ...verification, challengeId: challenge.id }, ctx);
 }
 
 /**
@@ -285,29 +325,29 @@ async function checkVerification(verification) {
  * challenge, or an authenticator-app MFA code.
  */
 async function submitMFA(code, verification) {
-  const left = deadline();
+  const ctx = await loginContext();
   const { machineId, challengeId } = verification;
 
   if (challengeId) {
     const answer = await rh(`/challenge/${encodeURIComponent(challengeId)}/respond/`, {
       method: 'POST',
       form: { response: code },
-    }, left());
+    }, ctx.left());
     if (answer.data.status !== 'validated') {
       const remaining = answer.data.challenge?.remaining_attempts;
       const detail = typeof answer.data.detail === 'string' ? `: ${answer.data.detail}` : '';
       throw httpError(400, `Robinhood rejected the code${remaining != null ? ` (${remaining} attempts left)` : ''}${detail}`);
     }
-    if (machineId) return finishApproval(verification, left);
+    if (machineId) return finishApproval(verification, ctx);
 
     // Older login challenge: log in again carrying the answered challenge
-    const grant = await passwordGrant(left, {}, { 'X-ROBINHOOD-CHALLENGE-RESPONSE-ID': challengeId });
+    const grant = await passwordGrant(ctx, {}, { 'X-ROBINHOOD-CHALLENGE-RESPONSE-ID': challengeId });
     if (grant.data.access_token) return saveSession(grant.data);
     throw httpError(502, `Robinhood accepted the code but the login returned no session (${grant.status}): ${reason(grant.data)}`);
   }
 
   console.log('[MFA] Submitting MFA code');
-  const grant = await passwordGrant(left, { mfa_code: code });
+  const grant = await passwordGrant(ctx, { mfa_code: code });
   if (grant.data.access_token) return saveSession(grant.data);
   throw httpError(400, `MFA verification failed: ${reason(grant.data)}`);
 }

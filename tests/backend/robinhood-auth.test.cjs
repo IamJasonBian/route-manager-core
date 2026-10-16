@@ -7,6 +7,8 @@ jest.mock('../../netlify/functions/lib/tokenStore.cjs', () => ({
   setToken: jest.fn(),
   clearToken: jest.fn(),
   getAuthStatus: jest.fn(),
+  getDeviceToken: jest.fn(),
+  setDeviceToken: jest.fn(),
 }));
 
 const tokenStore = require('../../netlify/functions/lib/tokenStore.cjs');
@@ -15,8 +17,13 @@ const auth = require('../../netlify/functions/robinhood-auth.cjs');
 const WORKFLOW = '829cd0f1-ac7f-4d9a-8d49-9545b8d3bf1d';
 const MACHINE = '5e0c3c4a-1d7e-4a51-9f0b-3c2d1e0f9a8b';
 const CHALLENGE = 'b7f1e2d3-4c5b-4a69-8e7f-0a1b2c3d4e5f';
+// What Robinhood issues a second device
+const WORKFLOW2 = '0d6f1c2b-3a4e-4f5d-8c7b-6a5f4e3d2c1b';
+const MACHINE2 = '7a8b9c0d-1e2f-4a3b-9c4d-5e6f7a8b9c0d';
+const CHALLENGE2 = 'c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f';
 const LEGACY_CHALLENGE = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 const SESSION = { access_token: 'rh-access', refresh_token: 'rh-refresh', expires_in: 86400, token_type: 'Bearer' };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 const event = (params) => ({ httpMethod: 'GET', queryStringParameters: params, headers: {} });
 const call = async (params) => {
@@ -29,63 +36,95 @@ function response(status, body) {
 }
 
 /**
- * Fake api.robinhood.com. `login` is what the password grant answers until the
- * device is approved; the approval's challenge is `challenge` ({ type, status }).
+ * Fake api.robinhood.com. Each device token gets its own pending workflow:
+ * the first device seen gets WORKFLOW with `challenge` / `promptStatus`, any
+ * later one WORKFLOW2 with an app prompt in `nextDevicePromptStatus`. `login`
+ * is what the password grant answers until that device is approved.
  */
 function fakeRobinhood({
-  login = { verification_workflow: { id: WORKFLOW, workflow_status: 'workflow_status_internal_pending' } },
+  login = { verification_workflow: { workflow_status: 'workflow_status_internal_pending' } },
   challenge = { type: 'prompt', status: 'issued' },
   promptStatus = 'issued',
+  nextDevicePromptStatus = 'issued',
   continueResult = 'workflow_status_approved',
   code = '123456',
 } = {}) {
-  const state = { approved: false, challenge: challenge && { ...challenge }, promptStatus, legacyAnswered: false, calls: [] };
+  const templates = [
+    { workflowId: WORKFLOW, machineId: MACHINE, challengeId: CHALLENGE, challenge, promptStatus },
+    { workflowId: WORKFLOW2, machineId: MACHINE2, challengeId: CHALLENGE2, challenge: { type: 'prompt', status: 'issued' }, promptStatus: nextDevicePromptStatus },
+  ];
+  const state = { devices: new Map(), legacyAnswered: false, calls: [] };
+  const recordFor = (device) => {
+    if (!state.devices.has(device)) {
+      const t = templates[Math.min(state.devices.size, 1)];
+      state.devices.set(device, {
+        device, ...t, challenge: t.challenge && { id: t.challengeId, ...t.challenge }, approved: false,
+      });
+    }
+    return state.devices.get(device);
+  };
+  const records = () => [...state.devices.values()];
+
   const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async (url, opts = {}) => {
     const u = new URL(String(url));
     const method = opts.method || 'GET';
     let body = null;
     if (typeof opts.body === 'string') body = JSON.parse(opts.body);
     else if (opts.body) body = Object.fromEntries(opts.body);
-    state.calls.push({ route: `${method} ${u.pathname}`, body, headers: opts.headers || {} });
+    const route = `${method} ${u.pathname}`;
+    state.calls.push({ route, body, headers: opts.headers || {} });
 
-    switch (`${method} ${u.pathname}`) {
-      case 'POST /oauth2/token/':
-        if (state.approved) return response(200, SESSION);
-        if (login.mfa_required && body.mfa_code) {
-          return body.mfa_code === code ? response(200, SESSION) : response(400, { detail: 'Please enter a valid code.' });
-        }
-        if (login.challenge && state.legacyAnswered && opts.headers['X-ROBINHOOD-CHALLENGE-RESPONSE-ID'] === login.challenge.id) {
-          return response(200, SESSION);
-        }
-        return response(login.detail ? 400 : 403, login);
-      case 'POST /pathfinder/user_machine/':
-        return response(200, { id: MACHINE });
-      case `GET /pathfinder/inquiries/${MACHINE}/user_view/`:
-        return response(200, state.challenge
-          ? { sequence: 0, context: { sheriff_challenge: { id: CHALLENGE, ...state.challenge } } }
-          : { sequence: 0, context: {} });
-      case `GET /push/${CHALLENGE}/get_prompts_status/`:
-        return response(200, { challenge_status: state.promptStatus });
-      case `POST /challenge/${CHALLENGE}/respond/`:
-      case `POST /challenge/${LEGACY_CHALLENGE}/respond/`:
-        if (body.response !== code) {
-          return response(400, { detail: 'Incorrect code', challenge: { remaining_attempts: 2, status: 'issued' } });
-        }
-        if (u.pathname.includes(CHALLENGE)) state.challenge.status = 'validated';
-        else state.legacyAnswered = true;
-        return response(200, { status: 'validated' });
-      case `POST /pathfinder/inquiries/${MACHINE}/user_view/`: {
-        const passed = state.challenge.status === 'validated' || state.promptStatus === 'validated';
-        const result = passed ? continueResult : 'workflow_status_internal_pending';
-        state.approved = result === 'workflow_status_approved';
-        return response(200, { type_context: { result } });
+    if (route === 'POST /oauth2/token/') {
+      const rec = recordFor(body.device_token);
+      if (rec.approved) return response(200, SESSION);
+      if (login.mfa_required && body.mfa_code) {
+        return body.mfa_code === code ? response(200, SESSION) : response(400, { detail: 'Please enter a valid code.' });
       }
-      default:
-        return response(404, { detail: `not mocked: ${method} ${u.pathname}` });
+      if (login.challenge && state.legacyAnswered && opts.headers['X-ROBINHOOD-CHALLENGE-RESPONSE-ID'] === login.challenge.id) {
+        return response(200, SESSION);
+      }
+      if (login.verification_workflow) {
+        return response(403, { verification_workflow: { ...login.verification_workflow, id: rec.workflowId } });
+      }
+      return response(login.detail ? 400 : 403, login);
     }
+    if (route === 'POST /pathfinder/user_machine/') {
+      const rec = records().find(r => r.workflowId === body.input?.workflow_id);
+      // The approval belongs to the device that logged in
+      if (!rec || rec.device !== body.device_id || body.flow !== 'suv') return response(400, { detail: 'bad user_machine' });
+      return response(200, { id: rec.machineId });
+    }
+    const byMachine = records().find(r => u.pathname === `/pathfinder/inquiries/${r.machineId}/user_view/`);
+    if (byMachine && method === 'GET') {
+      return response(200, byMachine.challenge
+        ? { sequence: 0, context: { sheriff_challenge: { ...byMachine.challenge } } }
+        : { sequence: 0, context: {} });
+    }
+    if (byMachine && method === 'POST') {
+      const passed = byMachine.challenge?.status === 'validated' || byMachine.promptStatus === 'validated';
+      const result = passed ? continueResult : 'workflow_status_internal_pending';
+      byMachine.approved = result === 'workflow_status_approved';
+      return response(200, { type_context: { result } });
+    }
+    const byPrompt = records().find(r => u.pathname === `/push/${r.challengeId}/get_prompts_status/`);
+    if (byPrompt) return response(200, { challenge_status: byPrompt.promptStatus });
+
+    const respond = u.pathname.match(/^\/challenge\/([\w-]+)\/respond\/$/);
+    if (respond && method === 'POST') {
+      if (body.response !== code) {
+        return response(400, { detail: 'Incorrect code', challenge: { remaining_attempts: 2, status: 'issued' } });
+      }
+      const rec = records().find(r => r.challengeId === respond[1]);
+      if (rec) rec.challenge.status = 'validated';
+      else if (respond[1] === LEGACY_CHALLENGE) state.legacyAnswered = true;
+      return response(200, { status: 'validated' });
+    }
+    return response(404, { detail: `not mocked: ${route}` });
   });
   state.routes = () => state.calls.map(c => c.route);
   state.fetchMock = fetchMock;
+  // The first device's workflow, which the tests advance by hand
+  state.primary = () => records()[0];
   return state;
 }
 
@@ -100,6 +139,8 @@ beforeEach(() => {
   tokenStore.setToken.mockResolvedValue(true);
   tokenStore.clearToken.mockResolvedValue(true);
   tokenStore.getAuthStatus.mockResolvedValue({ authenticated: false, message: 'Not connected to Robinhood' });
+  tokenStore.getDeviceToken.mockResolvedValue(null);
+  tokenStore.setDeviceToken.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -110,6 +151,13 @@ afterEach(() => {
     else process.env[k] = v;
   }
 });
+
+/** Log in once so the fake has a device + workflow, then forget the calls. */
+async function started(rh) {
+  const res = await call({ action: 'connect' });
+  rh.calls.length = 0;
+  return res.body;
+}
 
 describe('connect → app approval → verify', () => {
   test('connect starts the device approval and returns its ids', async () => {
@@ -128,6 +176,7 @@ describe('connect → app approval → verify', () => {
       'POST /oauth2/token/',
       'POST /pathfinder/user_machine/',
       `GET /pathfinder/inquiries/${MACHINE}/user_view/`,
+      `GET /push/${CHALLENGE}/get_prompts_status/`,
     ]);
     // The approval is for the same device the login used
     const [grant, machine] = rh.calls;
@@ -135,18 +184,23 @@ describe('connect → app approval → verify', () => {
     expect(machine.body).toEqual({ device_id: grant.body.device_token, flow: 'suv', input: { workflow_id: WORKFLOW } });
     expect(machine.headers['Content-Type']).toBe('application/json');
     expect(tokenStore.setToken).not.toHaveBeenCalled();
+    expect(tokenStore.setDeviceToken).not.toHaveBeenCalled();
   });
 
   test('verify reports pending until the prompt is approved, without logging in again', async () => {
     const rh = fakeRobinhood();
-    const { body } = await call({ action: 'verify', workflowId: WORKFLOW, machineId: MACHINE, challengeId: CHALLENGE });
+    const { verification } = await started(rh);
+    const { body } = await call({ action: 'verify', ...verification });
     expect(body).toMatchObject({ status: 'pending', requiresVerification: true, verification: { machineId: MACHINE, challengeId: CHALLENGE } });
     expect(rh.routes()).toEqual([`GET /pathfinder/inquiries/${MACHINE}/user_view/`, `GET /push/${CHALLENGE}/get_prompts_status/`]);
   });
 
   test('verify finishes the login once the prompt is approved and stores the session', async () => {
-    const rh = fakeRobinhood({ promptStatus: 'validated' });
-    const { status, body } = await call({ action: 'verify', workflowId: WORKFLOW, machineId: MACHINE });
+    const rh = fakeRobinhood();
+    const { verification } = await started(rh);
+    rh.primary().promptStatus = 'validated'; // tapped Approve in the app
+
+    const { status, body } = await call({ action: 'verify', ...verification });
     expect(status).toBe(200);
     expect(body).toMatchObject({ authenticated: true, status: 'verified' });
     expect(rh.routes()).toEqual([
@@ -160,8 +214,11 @@ describe('connect → app approval → verify', () => {
   });
 
   test('an approval Robinhood has not finalized stays pending and keeps the ids', async () => {
-    const rh = fakeRobinhood({ promptStatus: 'validated', continueResult: 'workflow_status_internal_pending' });
-    const { body } = await call({ action: 'verify', workflowId: WORKFLOW, machineId: MACHINE });
+    const rh = fakeRobinhood({ continueResult: 'workflow_status_internal_pending' });
+    const { verification } = await started(rh);
+    rh.primary().promptStatus = 'validated';
+
+    const { body } = await call({ action: 'verify', ...verification });
     expect(body).toMatchObject({
       status: 'pending',
       requiresVerification: true,
@@ -172,9 +229,12 @@ describe('connect → app approval → verify', () => {
     expect(tokenStore.setToken).not.toHaveBeenCalled();
   });
 
-  test('a declined or expired approval asks for a fresh start', async () => {
-    fakeRobinhood({ promptStatus: 'expired' });
-    const { body } = await call({ action: 'verify', machineId: MACHINE });
+  test('an approval that expires while waiting asks for a fresh start', async () => {
+    const rh = fakeRobinhood();
+    const { verification } = await started(rh);
+    rh.primary().promptStatus = 'expired';
+
+    const { body } = await call({ action: 'verify', ...verification });
     expect(body).toMatchObject({ authenticated: false, status: 'error' });
     expect(body.message).toMatch(/expired.*Start/);
   });
@@ -185,13 +245,14 @@ describe('connect → app approval → verify', () => {
     expect(connect.body).toMatchObject({ status: 'pending', challengeType: null, verification: { workflowId: WORKFLOW, machineId: MACHINE } });
     expect(connect.body.verification.challengeId).toBeUndefined();
 
-    rh.challenge = { type: 'prompt', status: 'issued' };
+    rh.primary().challenge = { id: CHALLENGE, type: 'prompt', status: 'issued' };
     const verify = await call({ action: 'verify', ...connect.body.verification });
     expect(verify.body).toMatchObject({ status: 'pending', challengeType: 'prompt', verification: { challengeId: CHALLENGE } });
   });
 
   test('verify with only the workflow id starts the approval', async () => {
     const rh = fakeRobinhood();
+    await started(rh);
     const { body } = await call({ action: 'verify', workflowId: WORKFLOW });
     expect(body).toMatchObject({ status: 'pending', verification: { workflowId: WORKFLOW, machineId: MACHINE } });
     expect(rh.routes()[0]).toBe('POST /pathfinder/user_machine/');
@@ -202,6 +263,74 @@ describe('connect → app approval → verify', () => {
     const { body } = await call({ action: 'verify' });
     expect(body).toMatchObject({ authenticated: false, status: 'no_pending' });
     expect(rh.calls).toHaveLength(0);
+  });
+});
+
+describe('device id', () => {
+  test('an approval that already lapsed moves the login to a new, stored device', async () => {
+    // Robinhood keeps handing this device its old workflow, whose prompt expired
+    const rh = fakeRobinhood({ promptStatus: 'expired' });
+    const { body } = await call({ action: 'connect' });
+
+    expect(tokenStore.setDeviceToken).toHaveBeenCalledTimes(1);
+    const device = tokenStore.setDeviceToken.mock.calls[0][0];
+    expect(device).toMatch(UUID_RE);
+    expect(body).toMatchObject({
+      status: 'pending',
+      requiresVerification: true,
+      challengeType: 'prompt',
+      verification: { workflowId: WORKFLOW2, machineId: MACHINE2, challengeId: CHALLENGE2 },
+    });
+    const grants = rh.calls.filter(c => c.route === 'POST /oauth2/token/');
+    expect(grants).toHaveLength(2);
+    expect(grants[0].body.device_token).not.toBe(device);
+    expect(grants[1].body.device_token).toBe(device);
+    expect(rh.calls.filter(c => c.route === 'POST /pathfinder/user_machine/').map(c => c.body.device_id))
+      .toEqual([grants[0].body.device_token, device]);
+  });
+
+  test('later steps log in as the stored device', async () => {
+    const rh = fakeRobinhood();
+    tokenStore.getDeviceToken.mockResolvedValue('11111111-2222-4333-8444-555555555555');
+    const { verification } = await started(rh);
+    expect(rh.primary().device).toBe('11111111-2222-4333-8444-555555555555');
+    rh.primary().promptStatus = 'validated';
+
+    const { body } = await call({ action: 'verify', ...verification });
+    expect(body).toMatchObject({ authenticated: true });
+    expect(rh.calls.find(c => c.route === 'POST /oauth2/token/').body.device_token).toBe('11111111-2222-4333-8444-555555555555');
+    expect(tokenStore.setDeviceToken).not.toHaveBeenCalled();
+  });
+
+  test('a lapsed approval moves device only once per connect', async () => {
+    // The new device's prompt has lapsed as well
+    fakeRobinhood({ promptStatus: 'expired', nextDevicePromptStatus: 'expired' });
+    const { body } = await call({ action: 'connect' });
+    expect(tokenStore.setDeviceToken).toHaveBeenCalledTimes(1);
+    expect(body).toMatchObject({ status: 'pending', requiresVerification: true });
+  });
+
+  test('connect finishes at once when the prompt was already approved', async () => {
+    const rh = fakeRobinhood({ promptStatus: 'validated' });
+    const { body } = await call({ action: 'connect' });
+    expect(body).toMatchObject({ authenticated: true, status: 'verified' });
+    expect(rh.routes()).toEqual([
+      'POST /oauth2/token/',
+      'POST /pathfinder/user_machine/',
+      `GET /pathfinder/inquiries/${MACHINE}/user_view/`,
+      `GET /push/${CHALLENGE}/get_prompts_status/`,
+      `POST /pathfinder/inquiries/${MACHINE}/user_view/`,
+      'POST /oauth2/token/',
+    ]);
+    expect(tokenStore.setToken).toHaveBeenCalledWith('rh-access', 'rh-refresh', 86400);
+  });
+
+  test('a new device id that cannot be saved is an error', async () => {
+    fakeRobinhood({ promptStatus: 'expired' });
+    tokenStore.setDeviceToken.mockResolvedValue(false);
+    const { status, body } = await call({ action: 'connect' });
+    expect(status).toBe(500);
+    expect(body.error).toMatch(/new device id could not be saved/);
   });
 });
 
@@ -216,6 +345,7 @@ describe('codes', () => {
       verification: { workflowId: WORKFLOW, machineId: MACHINE, challengeId: CHALLENGE },
     });
     expect(connect.body.message).toMatch(/text message/);
+    expect(rh.routes()).not.toContain(`GET /push/${CHALLENGE}/get_prompts_status/`);
 
     const { body } = await call({ action: 'mfa', code: '123456', ...connect.body.verification });
     expect(body).toMatchObject({ authenticated: true, status: 'verified' });
@@ -226,8 +356,9 @@ describe('codes', () => {
   });
 
   test('a wrong code is a 400 naming the attempts left', async () => {
-    fakeRobinhood({ challenge: { type: 'email', status: 'issued' } });
-    const { status, body } = await call({ action: 'mfa', code: '000000', workflowId: WORKFLOW, machineId: MACHINE, challengeId: CHALLENGE });
+    const rh = fakeRobinhood({ challenge: { type: 'email', status: 'issued' } });
+    const { verification } = await started(rh);
+    const { status, body } = await call({ action: 'mfa', code: '000000', ...verification });
     expect(status).toBe(400);
     expect(body.error).toMatch(/rejected the code \(2 attempts left\)/);
     expect(tokenStore.setToken).not.toHaveBeenCalled();
@@ -289,9 +420,11 @@ describe('guards and failures', () => {
   });
 
   test('a session that cannot be saved is an error, not a silent success', async () => {
-    fakeRobinhood({ promptStatus: 'validated' });
+    const rh = fakeRobinhood();
+    const { verification } = await started(rh);
+    rh.primary().promptStatus = 'validated';
     tokenStore.setToken.mockResolvedValue(false);
-    const { status, body } = await call({ action: 'verify', machineId: MACHINE });
+    const { status, body } = await call({ action: 'verify', ...verification });
     expect(status).toBe(500);
     expect(body.error).toMatch(/could not be saved/);
   });

@@ -9,6 +9,7 @@ const { fetchWithTimeout } = require('./http.cjs');
 const ROBINHOOD_API_BASE = 'https://api.robinhood.com';
 const STORE_NAME = 'robinhood-auth';
 const TOKEN_KEY = 'session';
+const DEVICE_KEY = 'device';
 
 // Local file fallback path
 const LOCAL_TOKEN_FILE = path.join(os.homedir(), '.tokens', 'robinhood-blobs.json');
@@ -202,6 +203,33 @@ async function refreshToken(refreshTokenValue) {
 }
 
 /**
+ * The Robinhood device id this site logs in as, once robinhood-auth has
+ * issued one. Kept apart from the session: disconnecting keeps the device
+ * approved.
+ */
+async function getDeviceToken() {
+  try {
+    const store = await getStore();
+    const data = await store.get(DEVICE_KEY, { type: 'json' });
+    return data?.deviceToken || null;
+  } catch (error) {
+    console.error('[TOKEN] Error reading device token:', error.message);
+    return null;
+  }
+}
+
+async function setDeviceToken(deviceToken) {
+  try {
+    const store = await getStore();
+    await store.setJSON(DEVICE_KEY, { deviceToken, updatedAt: new Date().toISOString() });
+    return true;
+  } catch (error) {
+    console.error('[TOKEN] Error saving device token:', error.message);
+    return false;
+  }
+}
+
+/**
  * Get auth status for API responses.
  */
 async function getAuthStatus() {
@@ -260,4 +288,6 @@ module.exports = {
   refreshToken,
   getAuthStatus,
   validateToken,
+  getDeviceToken,
+  setDeviceToken,
 };
