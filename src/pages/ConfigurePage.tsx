@@ -22,7 +22,9 @@ import {
   checkVerification,
   submitMFA,
   disconnectRobinhood,
+  AuthResult,
   AuthStatus,
+  VerificationIds,
 } from '../services/robinhoodService';
 
 function PlaidOnboarding({
@@ -146,18 +148,45 @@ function PlaidOnboarding({
 function AgentOnboarding({
   authStatus,
   onAuthChange,
-  portfolioConnected,
 }: {
   authStatus: AuthStatus | null;
   onAuthChange: () => void;
-  portfolioConnected: boolean;
 }) {
   const [connecting, setConnecting] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   const [authState, setAuthState] = useState<'idle' | 'device' | 'mfa'>('idle');
+  // Robinhood's approval ids — the server keeps no login state between calls
+  const [verification, setVerification] = useState<VerificationIds | undefined>();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const resetLogin = () => {
+    setAuthState('idle');
+    setVerification(undefined);
+    setMfaCode('');
+  };
+
+  /** Move to whatever step Robinhood asks for next. */
+  const applyResult = (result: AuthResult, fallbackError: string) => {
+    if (result.authenticated) {
+      resetLogin();
+      setMessage(result.message || 'Connected!');
+      onAuthChange();
+    } else if (result.requiresMFA) {
+      setVerification(result.verification);
+      setAuthState('mfa');
+      setMessage(result.message || 'Enter the code');
+    } else if (result.requiresVerification) {
+      setVerification(result.verification);
+      setAuthState('device');
+      setMessage(result.message || 'Approve in the Robinhood app');
+    } else {
+      resetLogin();
+      setMessage(null);
+      setError(result.error || result.message || fallbackError);
+    }
+  };
 
   const handleConnect = async () => {
     setConnecting(true);
@@ -165,21 +194,7 @@ function AgentOnboarding({
     setMessage(null);
 
     try {
-      const result = await connectRobinhood();
-
-      if (result.authenticated) {
-        setMessage(result.message);
-        setAuthState('idle');
-        onAuthChange();
-      } else if (result.requiresVerification) {
-        setAuthState('device');
-        setMessage(result.message || 'Approve in Robinhood app');
-      } else if (result.requiresMFA) {
-        setAuthState('mfa');
-        setMessage(result.message || 'Enter MFA code');
-      } else {
-        setError(result.error || 'Connection failed');
-      }
+      applyResult(await connectRobinhood(), 'Connection failed');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed');
     } finally {
@@ -192,17 +207,7 @@ function AgentOnboarding({
     setError(null);
 
     try {
-      const result = await checkVerification();
-
-      if (result.authenticated) {
-        setMessage(result.message || 'Connected!');
-        setAuthState('idle');
-        onAuthChange();
-      } else if (result.status === 'pending') {
-        setMessage(`Waiting for approval... (${result.elapsedSeconds}s)`);
-      } else {
-        setError(result.message || 'Verification failed');
-      }
+      applyResult(await checkVerification(verification), 'Verification failed');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
     } finally {
@@ -217,16 +222,7 @@ function AgentOnboarding({
     setError(null);
 
     try {
-      const result = await submitMFA(mfaCode.trim());
-
-      if (result.authenticated) {
-        setMessage(result.message || 'Connected!');
-        setAuthState('idle');
-        setMfaCode('');
-        onAuthChange();
-      } else {
-        setError(result.error || 'MFA failed');
-      }
+      applyResult(await submitMFA(mfaCode.trim(), verification), 'MFA failed');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'MFA failed');
     } finally {
@@ -249,10 +245,9 @@ function AgentOnboarding({
   };
 
   const isConnected = authStatus?.authenticated;
-  const isDisabled = !portfolioConnected;
 
   return (
-    <div className={`bg-white dark:bg-zinc-950 rounded-lg border border-gray-200 dark:border-zinc-800 p-6 ${isDisabled ? 'opacity-60' : ''}`}>
+    <div className="bg-white dark:bg-zinc-950 rounded-lg border border-gray-200 dark:border-zinc-800 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-lg ${isConnected ? 'bg-green-100 dark:bg-green-900/30' : 'bg-orange-100 dark:bg-orange-900/30'}`}>
@@ -261,11 +256,9 @@ function AgentOnboarding({
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Agent Onboarding</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {isDisabled
-                ? 'Requires portfolio onboarding first'
-                : isConnected
-                  ? `Connected — Robinhood • Expires in ${Math.floor((authStatus?.expiresIn || 0) / 3600)}h`
-                  : 'Connect to Robinhood to enable the trading agent'}
+              {isConnected
+                ? `Connected — Robinhood • Expires in ${Math.floor((authStatus?.expiresIn || 0) / 3600)}h`
+                : 'Connect Robinhood to sync fills and positions'}
             </p>
           </div>
         </div>
@@ -285,7 +278,7 @@ function AgentOnboarding({
               ) : (
                 <button
                   onClick={handleConnect}
-                  disabled={connecting || isDisabled}
+                  disabled={connecting}
                   className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm whitespace-nowrap"
                 >
                   {connecting ? (
@@ -315,7 +308,7 @@ function AgentOnboarding({
                 Check
               </button>
               <button
-                onClick={() => setAuthState('idle')}
+                onClick={resetLogin}
                 className="px-3 py-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 Cancel
@@ -329,9 +322,12 @@ function AgentOnboarding({
                 type="text"
                 value={mfaCode}
                 onChange={(e) => setMfaCode(e.target.value)}
-                placeholder="MFA Code"
+                placeholder="Code"
+                aria-label="Robinhood verification code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
                 className="w-32 px-3 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg text-center bg-white dark:bg-zinc-900 text-gray-900 dark:text-white"
-                maxLength={6}
+                maxLength={8}
               />
               <button
                 onClick={handleMFA}
@@ -346,10 +342,7 @@ function AgentOnboarding({
                 Submit
               </button>
               <button
-                onClick={() => {
-                  setAuthState('idle');
-                  setMfaCode('');
-                }}
+                onClick={resetLogin}
                 className="px-3 py-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 Cancel
@@ -433,7 +426,7 @@ export default function ConfigurePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <PlaidOnboarding plaidStatus={plaidStatus} onPlaidChange={fetchPlaidStatus} />
-        <AgentOnboarding authStatus={authStatus} onAuthChange={fetchAuthStatus} portfolioConnected={plaidStatus?.connected ?? false} />
+        <AgentOnboarding authStatus={authStatus} onAuthChange={fetchAuthStatus} />
       </div>
     </div>
   );

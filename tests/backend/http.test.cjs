@@ -47,6 +47,24 @@ describe('robinhood-bot guards', () => {
     expect(res.statusCode).toBe(401);
   });
 
+  test('action=order is disabled when TRADING_DB_TOKEN is unset', async () => {
+    delete process.env.TRADING_DB_TOKEN;
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    try {
+      const res = await bot.handler({
+        httpMethod: 'POST',
+        queryStringParameters: { action: 'order' },
+        headers: {},
+        body: JSON.stringify({ symbol: 'AAPL', side: 'buy', quantity: 1, dryRun: false }),
+      });
+      expect(res.statusCode).toBe(403);
+      expect(JSON.parse(res.body).error).toMatch(/disabled/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   test('validation errors are 400', async () => {
     const quote = await bot.handler({ httpMethod: 'GET', queryStringParameters: { action: 'quote' } });
     expect(quote.statusCode).toBe(400);

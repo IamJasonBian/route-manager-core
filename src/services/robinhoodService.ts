@@ -12,19 +12,26 @@ export interface AuthStatus {
   hasRefreshToken?: boolean;
   updatedAt?: string;
   error?: string;
-  pendingVerification?: {
-    type: 'mfa' | 'device';
-    elapsedSeconds: number;
-  };
+}
+
+/** Ids of a login waiting on Robinhood's device approval or a code — pass back to verify / mfa. */
+export interface VerificationIds {
+  workflowId?: string;
+  machineId?: string;
+  challengeId?: string;
 }
 
 export interface AuthResult {
   authenticated: boolean;
   message: string;
+  status?: 'verified' | 'pending' | 'code_required' | 'no_pending' | 'error';
+  /** Approve the login in the Robinhood app, then check again */
   requiresVerification?: boolean;
+  /** Enter a code (SMS / email / authenticator) */
   requiresMFA?: boolean;
   verificationType?: 'device' | 'mfa';
-  challengeType?: string;
+  challengeType?: string | null;
+  verification?: VerificationIds;
   error?: string;
 }
 
@@ -488,12 +495,21 @@ export async function connectRobinhood(): Promise<AuthResult> {
   return fetchApi<AuthResult>('/robinhood-auth?action=connect');
 }
 
-export async function checkVerification(): Promise<AuthResult & { status?: string; elapsedSeconds?: number }> {
-  return fetchApi<AuthResult & { status?: string; elapsedSeconds?: number }>('/robinhood-auth?action=verify');
+function verificationQuery(ids?: VerificationIds): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(ids ?? {})) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return qs ? `&${qs}` : '';
 }
 
-export async function submitMFA(code: string): Promise<AuthResult> {
-  return fetchApi<AuthResult>(`/robinhood-auth?action=mfa&code=${encodeURIComponent(code)}`);
+export async function checkVerification(ids?: VerificationIds): Promise<AuthResult> {
+  return fetchApi<AuthResult>(`/robinhood-auth?action=verify${verificationQuery(ids)}`);
+}
+
+export async function submitMFA(code: string, ids?: VerificationIds): Promise<AuthResult> {
+  return fetchApi<AuthResult>(`/robinhood-auth?action=mfa&code=${encodeURIComponent(code)}${verificationQuery(ids)}`);
 }
 
 export async function disconnectRobinhood(): Promise<AuthResult> {

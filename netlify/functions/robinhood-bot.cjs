@@ -297,7 +297,11 @@ exports.handler = async (event) => {
         if (event.httpMethod !== 'POST') {
           throw httpError(405, 'POST method required for orders');
         }
-        // Live order placement — same write guard as the trading-DB endpoints
+        // Live order placement uses the site's stored Robinhood session, so
+        // unlike the trading-DB writes it fails closed without a token set
+        if (!process.env.TRADING_DB_TOKEN) {
+          throw httpError(403, 'Order placement is disabled: set TRADING_DB_TOKEN on the site to enable it');
+        }
         const denied = checkWriteAuth(event);
         if (denied) throw httpError(401, denied);
         const { symbol: orderSymbol, side, quantity, dryRun = true } = body;

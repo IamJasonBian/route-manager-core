@@ -179,6 +179,8 @@ async function refreshToken(refreshTokenValue) {
       body: new URLSearchParams({
         grant_type: 'refresh_token',
         refresh_token: refreshTokenValue,
+        scope: 'internal',
+        expires_in: '86400',
         client_id: 'c82SH0WZOsabOXGP2sxqcj34FxkvfnWRZBKlBjFS',
       }),
     });
