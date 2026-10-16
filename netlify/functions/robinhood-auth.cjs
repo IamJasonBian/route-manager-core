@@ -37,7 +37,8 @@ const BUDGET_MS = 9000;
 const ID_RE = /^[\w-]{6,80}$/;
 const CODE_RE = /^\d{4,10}$/;
 const CODE_CHANNEL = { sms: 'text message', email: 'email' };
-const CHALLENGE_FAILED = new Set(['expired', 'failed', 'denied', 'declined', 'canceled', 'cancelled']);
+// `closed`: Robinhood closed the approval (HTTP 410) — it lapses minutes after it's sent
+const CHALLENGE_FAILED = new Set(['expired', 'failed', 'denied', 'declined', 'canceled', 'cancelled', 'closed']);
 
 const corsHeaders = { ...CORS, 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' };
 
@@ -153,14 +154,27 @@ function pendingResult(verification, challenge) {
     challengeType: challenge ? challenge.type : null,
     verification: ids,
     message: challenge
-      ? 'Approve the login in the Robinhood app, then press Check.'
-      : 'Waiting for Robinhood to send the approval request. Press Check in a few seconds.',
+      ? 'Approve the login in the Robinhood app.'
+      : 'Waiting for Robinhood to send the approval request.',
   };
 }
 
-/** The approval's current challenge: { id, type: prompt | sms | email, status }, or null. */
+/** An approval that can no longer complete. */
+function lapsedResult(state) {
+  return {
+    authenticated: false,
+    status: 'error',
+    message: `Robinhood reports the approval as ${state}. Press Start to send a new one.`,
+  };
+}
+
+/**
+ * The approval's current challenge: { id, type: prompt | sms | email, status },
+ * null before one is issued, or status `closed` once Robinhood has closed it.
+ */
 async function readChallenge(machineId, ctx) {
   const { ok, status, data } = await rh(`/pathfinder/inquiries/${encodeURIComponent(machineId)}/user_view/`, {}, ctx.left());
+  if (status === 410) return { id: null, type: null, status: 'closed' };
   if (!ok) throw httpError(502, `Robinhood approval lookup failed (${status}): ${reason(data)}`);
   const c = data.context?.sheriff_challenge || data.type_context?.context?.sheriff_challenge;
   return c && c.id ? { id: c.id, type: c.type, status: c.status } : null;
@@ -185,7 +199,7 @@ async function finishApproval(verification, ctx) {
     return {
       ...pendingResult(verification, null),
       workflowStatus: result,
-      message: `Approved; Robinhood is still finalizing the login (${result || `HTTP ${cont.status}`}). Press Check again.`,
+      message: `Approved; Robinhood is still finalizing the login (${result || `HTTP ${cont.status}`}).`,
     };
   }
   const grant = await passwordGrant(ctx);
@@ -203,6 +217,10 @@ async function startApproval(workflowId, ctx, { renewStale = false } = {}) {
     json: { device_id: ctx.device, flow: 'suv', input: { workflow_id: workflowId } },
   }, ctx.left());
   if (!machine.ok || !machine.data.id) {
+    // A lapsed workflow can't start a new approval either
+    if (renewStale && machine.status >= 400 && machine.status < 500 && machine.status !== 429) {
+      return loginAsNewDevice(ctx);
+    }
     throw httpError(502, `Robinhood didn't start the device approval (${machine.status}): ${reason(machine.data)}`);
   }
   const verification = { workflowId, machineId: machine.data.id };
@@ -218,7 +236,10 @@ async function startApproval(workflowId, ctx, { renewStale = false } = {}) {
   }
 
   if (state === 'validated') return finishApproval({ ...verification, challengeId: challenge.id }, ctx);
-  if (CHALLENGE_FAILED.has(state) && renewStale) return loginAsNewDevice(ctx);
+  if (CHALLENGE_FAILED.has(state)) {
+    if (renewStale) return loginAsNewDevice(ctx);
+    return lapsedResult(state);
+  }
   return pendingResult(verification, challenge);
 }
 
@@ -309,13 +330,7 @@ async function checkVerification(verification) {
   if (!challenge) return pendingResult(verification, null);
 
   const state = await challengeState(challenge, ctx);
-  if (CHALLENGE_FAILED.has(state)) {
-    return {
-      authenticated: false,
-      status: 'error',
-      message: `Robinhood reports the approval as ${state}. Press Start to send a new one.`,
-    };
-  }
+  if (CHALLENGE_FAILED.has(state)) return lapsedResult(state);
   if (state !== 'validated') return pendingResult(verification, challenge);
   return finishApproval({ ...verification, challengeId: challenge.id }, ctx);
 }

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import ConfigurePage from './ConfigurePage';
 
 const mockAuthStatus = jest.fn();
@@ -88,4 +88,59 @@ test('an approval that ends shows the error and returns to Start', async () => {
 
   await card.findByText(/approval as expired/);
   expect((card.getByRole('button', { name: /start/i }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+test('waiting on the app approval checks on its own and connects once approved', async () => {
+  jest.useFakeTimers();
+  try {
+    const waiting = { authenticated: false, status: 'pending', requiresVerification: true, verification: IDS, message: 'Approve the login in the Robinhood app.' };
+    mockConnect.mockResolvedValue(waiting);
+    mockVerify
+      .mockResolvedValueOnce(waiting)
+      .mockResolvedValueOnce({ authenticated: true, status: 'verified', message: 'Connected to Robinhood.' });
+    render(<ConfigurePage />);
+    const card = await robinhoodCard();
+
+    fireEvent.click(card.getByRole('button', { name: /start/i }));
+    await card.findByText('Approve the login in the Robinhood app.');
+    expect(mockVerify).not.toHaveBeenCalled();
+
+    await act(async () => { jest.advanceTimersByTime(4000); });
+    expect(mockVerify).toHaveBeenCalledTimes(1);
+    expect(mockVerify).toHaveBeenLastCalledWith(IDS);
+
+    await act(async () => { jest.advanceTimersByTime(4000); });
+    await card.findByText('Connected to Robinhood.');
+    expect(mockVerify).toHaveBeenCalledTimes(2);
+
+    // Connected — no more checks
+    await act(async () => { jest.advanceTimersByTime(30_000); });
+    expect(mockVerify).toHaveBeenCalledTimes(2);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('the automatic checks stop after ten minutes and leave Check to the user', async () => {
+  jest.useFakeTimers();
+  try {
+    const waiting = { authenticated: false, status: 'pending', requiresVerification: true, verification: IDS, message: 'Approve the login in the Robinhood app.' };
+    mockConnect.mockResolvedValue(waiting);
+    mockVerify.mockResolvedValue(waiting);
+    render(<ConfigurePage />);
+    const card = await robinhoodCard();
+
+    fireEvent.click(card.getByRole('button', { name: /start/i }));
+    await card.findByText('Approve the login in the Robinhood app.');
+    for (let i = 0; i < 160; i++) {
+      await act(async () => { jest.advanceTimersByTime(4000); });
+    }
+    const calls = mockVerify.mock.calls.length;
+    expect(calls).toBeGreaterThan(140);
+    expect(calls).toBeLessThanOrEqual(150);
+    await card.findByText(/Still waiting/);
+    expect(card.getByRole('button', { name: /check/i })).toBeTruthy();
+  } finally {
+    jest.useRealTimers();
+  }
 });

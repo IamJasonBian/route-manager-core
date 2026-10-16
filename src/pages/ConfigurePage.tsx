@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Shield,
   TrendingUp,
@@ -145,6 +145,11 @@ function PlaidOnboarding({
   );
 }
 
+/** While waiting on the app approval, check this often: Robinhood closes it minutes after sending. */
+const APPROVAL_POLL_MS = 4_000;
+/** Then stop and leave Check to the user. */
+const APPROVAL_POLL_MAX_MS = 10 * 60_000;
+
 function AgentOnboarding({
   authStatus,
   onAuthChange,
@@ -160,6 +165,9 @@ function AgentOnboarding({
   const [verification, setVerification] = useState<VerificationIds | undefined>();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // One verify call at a time, whether from Check or the poll below
+  const checking = useRef(false);
+  const verificationRef = useRef(verification);
 
   const resetLogin = () => {
     setAuthState('idle');
@@ -203,6 +211,8 @@ function AgentOnboarding({
   };
 
   const handleVerify = async () => {
+    if (checking.current) return;
+    checking.current = true;
     setVerifying(true);
     setError(null);
 
@@ -211,9 +221,56 @@ function AgentOnboarding({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
     } finally {
+      checking.current = false;
       setVerifying(false);
     }
   };
+
+  // The poll reads the latest ids and handler without restarting
+  const applyRef = useRef(applyResult);
+  useEffect(() => {
+    verificationRef.current = verification;
+    applyRef.current = applyResult;
+  });
+
+  // Waiting on the app approval: check every few seconds so the login
+  // completes as soon as it's approved
+  useEffect(() => {
+    if (authState !== 'device') return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = Date.now() + APPROVAL_POLL_MAX_MS;
+
+    const poll = async () => {
+      if (cancelled) return;
+      if (Date.now() > deadline) {
+        setMessage('Still waiting. After approving in the Robinhood app press Check, or Cancel and Start to send a new request.');
+        return;
+      }
+      if (!checking.current) {
+        checking.current = true;
+        try {
+          const result = await checkVerification(verificationRef.current);
+          if (cancelled) return;
+          setError(null);
+          applyRef.current(result, 'Verification failed');
+          if (!result.requiresVerification) return; // connected, a code, or lapsed
+        } catch (err) {
+          // Keep polling through a failed check (timeout, Robinhood 5xx)
+          if (!cancelled) setError(err instanceof Error ? err.message : 'Verification failed');
+        } finally {
+          checking.current = false;
+        }
+      }
+      if (!cancelled) timer = setTimeout(poll, APPROVAL_POLL_MS);
+    };
+
+    timer = setTimeout(poll, APPROVAL_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [authState]);
 
   const handleMFA = async () => {
     if (!mfaCode.trim()) return;
@@ -294,7 +351,7 @@ function AgentOnboarding({
 
           {authState === 'device' && (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-yellow-600 dark:text-yellow-400">Approve in Robinhood app</span>
+              <span className="text-sm text-yellow-600 dark:text-yellow-400">Waiting for approval…</span>
               <button
                 onClick={handleVerify}
                 disabled={verifying}

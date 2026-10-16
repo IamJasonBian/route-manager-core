@@ -39,7 +39,9 @@ function response(status, body) {
  * Fake api.robinhood.com. Each device token gets its own pending workflow:
  * the first device seen gets WORKFLOW with `challenge` / `promptStatus`, any
  * later one WORKFLOW2 with an app prompt in `nextDevicePromptStatus`. `login`
- * is what the password grant answers until that device is approved.
+ * is what the password grant answers until that device is approved. For the
+ * first device, `closed` makes its inquiry 410 Gone and `machineStatus` fails
+ * starting the approval.
  */
 function fakeRobinhood({
   login = { verification_workflow: { workflow_status: 'workflow_status_internal_pending' } },
@@ -48,10 +50,12 @@ function fakeRobinhood({
   nextDevicePromptStatus = 'issued',
   continueResult = 'workflow_status_approved',
   code = '123456',
+  closed = false,
+  machineStatus = 200,
 } = {}) {
   const templates = [
-    { workflowId: WORKFLOW, machineId: MACHINE, challengeId: CHALLENGE, challenge, promptStatus },
-    { workflowId: WORKFLOW2, machineId: MACHINE2, challengeId: CHALLENGE2, challenge: { type: 'prompt', status: 'issued' }, promptStatus: nextDevicePromptStatus },
+    { workflowId: WORKFLOW, machineId: MACHINE, challengeId: CHALLENGE, challenge, promptStatus, closed, machineStatus },
+    { workflowId: WORKFLOW2, machineId: MACHINE2, challengeId: CHALLENGE2, challenge: { type: 'prompt', status: 'issued' }, promptStatus: nextDevicePromptStatus, closed: false, machineStatus: 200 },
   ];
   const state = { devices: new Map(), legacyAnswered: false, calls: [] };
   const recordFor = (device) => {
@@ -92,9 +96,13 @@ function fakeRobinhood({
       const rec = records().find(r => r.workflowId === body.input?.workflow_id);
       // The approval belongs to the device that logged in
       if (!rec || rec.device !== body.device_id || body.flow !== 'suv') return response(400, { detail: 'bad user_machine' });
+      if (rec.machineStatus !== 200) return response(rec.machineStatus, { detail: 'Workflow is no longer active.' });
       return response(200, { id: rec.machineId });
     }
     const byMachine = records().find(r => u.pathname === `/pathfinder/inquiries/${r.machineId}/user_view/`);
+    if (byMachine && byMachine.closed) {
+      return response(410, { page: null, context: null, type: 'result', type_context: { result: null }, sequence: -1, state_name: 'Closed' });
+    }
     if (byMachine && method === 'GET') {
       return response(200, byMachine.challenge
         ? { sequence: 0, context: { sheriff_challenge: { ...byMachine.challenge } } }
@@ -239,6 +247,18 @@ describe('connect → app approval → verify', () => {
     expect(body.message).toMatch(/expired.*Start/);
   });
 
+  test('an approval Robinhood has closed (410) ends the wait instead of failing', async () => {
+    const rh = fakeRobinhood();
+    const { verification } = await started(rh);
+    rh.primary().closed = true;
+
+    const { status, body } = await call({ action: 'verify', ...verification });
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ authenticated: false, status: 'error' });
+    expect(body.message).toMatch(/closed.*Start/);
+    expect(rh.routes()).toEqual([`GET /pathfinder/inquiries/${MACHINE}/user_view/`]);
+  });
+
   test('a challenge not issued yet is picked up by the next verify', async () => {
     const rh = fakeRobinhood({ challenge: null });
     const connect = await call({ action: 'connect' });
@@ -289,6 +309,28 @@ describe('device id', () => {
       .toEqual([grants[0].body.device_token, device]);
   });
 
+  test.each([
+    ['its approval is already closed', { closed: true }],
+    ['its workflow can no longer start an approval', { machineStatus: 400 }],
+  ])('connect moves to a new device when %s', async (_, opts) => {
+    const rh = fakeRobinhood(opts);
+    const { body } = await call({ action: 'connect' });
+    expect(tokenStore.setDeviceToken).toHaveBeenCalledTimes(1);
+    expect(body).toMatchObject({
+      status: 'pending',
+      verification: { workflowId: WORKFLOW2, machineId: MACHINE2, challengeId: CHALLENGE2 },
+    });
+    expect(rh.calls.filter(c => c.route === 'POST /oauth2/token/')).toHaveLength(2);
+  });
+
+  test('a failure starting the approval that a new device would not fix is reported', async () => {
+    fakeRobinhood({ machineStatus: 503 });
+    const { status, body } = await call({ action: 'connect' });
+    expect(status).toBe(502);
+    expect(body.error).toMatch(/didn't start the device approval \(503\)/);
+    expect(tokenStore.setDeviceToken).not.toHaveBeenCalled();
+  });
+
   test('later steps log in as the stored device', async () => {
     const rh = fakeRobinhood();
     tokenStore.getDeviceToken.mockResolvedValue('11111111-2222-4333-8444-555555555555');
@@ -307,7 +349,8 @@ describe('device id', () => {
     fakeRobinhood({ promptStatus: 'expired', nextDevicePromptStatus: 'expired' });
     const { body } = await call({ action: 'connect' });
     expect(tokenStore.setDeviceToken).toHaveBeenCalledTimes(1);
-    expect(body).toMatchObject({ status: 'pending', requiresVerification: true });
+    expect(body).toMatchObject({ authenticated: false, status: 'error' });
+    expect(body.message).toMatch(/expired/);
   });
 
   test('connect finishes at once when the prompt was already approved', async () => {
