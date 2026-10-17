@@ -111,6 +111,7 @@ describe('VolatilityPuts', () => {
     const ticks = { NBIS: [{ symbol: 'NBIS', price: 179, ts: '2026-10-14T22:40:00Z' }] };
     render(<VolatilityPuts snapshot={SNAPSHOT} ticks={ticks} connected focusSymbol="NBIS" />);
     expect(screen.getByTestId('coverage-NBIS').textContent).toMatch(/partial cover/);
+    expect(screen.getByTestId('coverage-NBIS').id).toBe('coverage-NBIS');
     expect(screen.getByTestId('coverage-MU').textContent).toMatch(/covered/);
     expect(screen.getByTestId('sse-status').textContent).toMatch(/live/);
     expect(screen.getAllByTestId('live-event')[0].textContent).toMatch(/order_filled/);

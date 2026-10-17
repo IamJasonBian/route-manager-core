@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Activity, FileText, Download, Radio } from 'lucide-react';
 import {
   Bar,
@@ -39,6 +40,7 @@ function fmtTime(iso: string | null | undefined): string {
 }
 
 function NameCard({ name, focused }: { name: CoverageName; focused: boolean }) {
+  const cardRef = useRef<HTMLDivElement>(null);
   const whole = Math.floor(name.quantity);
   const uncovered = name.uncovered_qty >= 1;
   const badge = whole < 1
@@ -46,8 +48,15 @@ function NameCard({ name, focused }: { name: CoverageName; focused: boolean }) {
     : uncovered
       ? 'partial cover'
       : 'covered';
+
+  useEffect(() => {
+    if (focused) cardRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [focused]);
+
   return (
     <div
+      ref={cardRef}
+      id={`coverage-${name.symbol}`}
       data-testid={`coverage-${name.symbol}`}
       className={`rounded-lg border p-5 ${
         focused
@@ -150,7 +159,13 @@ export default function VolatilityPuts({
   const connected = connectedProp ?? live.connected;
   const focus = (focusSymbol || '').toUpperCase();
 
-  const chartData = snapshot.names.map((n) => ({
+  const names = [...snapshot.names].sort((a, b) => {
+    if (focus && a.symbol === focus) return -1;
+    if (focus && b.symbol === focus) return 1;
+    return 0;
+  });
+
+  const chartData = names.map((n) => ({
     symbol: n.symbol,
     covered: n.covered_qty,
     uncovered: n.uncovered_qty,
@@ -158,7 +173,9 @@ export default function VolatilityPuts({
     stop: n.stop_price || 0,
   }));
 
-  const sortedEvents = [...snapshot.events].sort((a, b) => eventTs(b) - eventTs(a));
+  const sortedEvents = [...snapshot.events]
+    .filter((e) => !focus || !e.symbol || e.symbol.toUpperCase() === focus)
+    .sort((a, b) => eventTs(b) - eventTs(a));
 
   return (
     <div className="space-y-6">
@@ -209,7 +226,7 @@ export default function VolatilityPuts({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {snapshot.names.map((name) => (
+        {names.map((name) => (
           <NameCard key={name.symbol} name={name} focused={focus === name.symbol} />
         ))}
       </div>

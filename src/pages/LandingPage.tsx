@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Bitcoin, ChevronRight, Cpu, Hexagon, Moon, Sun } from 'lucide-react';
 import { useTheme, FontMode } from '../contexts/ThemeContext';
 
@@ -33,7 +33,6 @@ const ASSETS = [
 ] as const;
 
 export default function LandingPage() {
-  const navigate = useNavigate();
   const { isDark, toggle, font, cycleFont } = useTheme();
 
   return (
@@ -64,9 +63,9 @@ export default function LandingPage() {
           {ASSETS.map((asset) => {
             const Icon = asset.icon;
             return (
-              <button
+              <Link
                 key={asset.id}
-                onClick={() => navigate(asset.to)}
+                to={asset.to}
                 className="flex items-center gap-4 px-5 py-4 border border-gray-200 dark:border-zinc-900 rounded-lg hover:border-gray-400 dark:hover:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-950 transition-all text-left group"
               >
                 <div className="p-2 rounded-lg bg-gray-100 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-900 group-hover:border-gray-300 dark:group-hover:border-zinc-700 transition-colors">
@@ -77,7 +76,7 @@ export default function LandingPage() {
                   <p className="text-xs text-gray-400 dark:text-zinc-600 mt-0.5">{asset.detail}</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-300 dark:text-zinc-800 group-hover:text-gray-500 dark:group-hover:text-zinc-500 transition-colors" />
-              </button>
+              </Link>
             );
           })}
         </div>
