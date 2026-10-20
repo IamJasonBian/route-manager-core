@@ -96,6 +96,17 @@ export function eventTs(e: StopRiskEvent): number {
   return Number.isFinite(t) ? t : 0;
 }
 
+/** Events inside [from, to] — local calendar days, inclusive; a blank bound is open. */
+export function inDateRange(events: StopRiskEvent[], from: string, to: string): StopRiskEvent[] {
+  if (!from && !to) return events;
+  const lo = from ? new Date(`${from}T00:00:00`).getTime() : -Infinity;
+  const hi = to ? new Date(`${to}T23:59:59.999`).getTime() : Infinity;
+  return events.filter((e) => {
+    const t = eventTs(e);
+    return t > 0 && t >= lo && t <= hi;
+  });
+}
+
 /** Newest `limit` events, newest first. */
 export function tailEvents(events: StopRiskEvent[], limit = EVENT_TAIL): StopRiskEvent[] {
   return [...events].sort((a, b) => eventTs(b) - eventTs(a)).slice(0, limit);

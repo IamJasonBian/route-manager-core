@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Activity, FileText, Download, Radio } from 'lucide-react';
 import {
   Bar,
@@ -13,6 +13,7 @@ import { useStopEventStream, type PriceTicks } from '../hooks/useStopEventStream
 import {
   DESIGNATED_SYMBOLS,
   eventTs,
+  inDateRange,
   type CoverageName,
   type StopRiskEvent,
   type StopRiskSnapshot,
@@ -158,6 +159,9 @@ export default function VolatilityPuts({
   const ticks = ticksProp ?? live.ticks;
   const connected = connectedProp ?? live.connected;
   const focus = (focusSymbol || '').toUpperCase();
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const datedEvents = inDateRange(snapshot.events, from, to);
 
   const names = [...snapshot.names].sort((a, b) => {
     if (focus && a.symbol === focus) return -1;
@@ -173,7 +177,7 @@ export default function VolatilityPuts({
     stop: n.stop_price || 0,
   }));
 
-  const sortedEvents = [...snapshot.events]
+  const sortedEvents = [...datedEvents]
     .filter((e) => !focus || !e.symbol || e.symbol.toUpperCase() === focus)
     .sort((a, b) => eventTs(b) - eventTs(a));
 
@@ -231,42 +235,64 @@ export default function VolatilityPuts({
         ))}
       </div>
 
-      <EventPriceChart
-        events={snapshot.events}
-        ticks={ticks}
-        names={snapshot.names}
-        designated={[...DESIGNATED_SYMBOLS]}
-        focusSymbol={focus || undefined}
-      />
+      <div className="flex items-end gap-3 flex-wrap" role="group" aria-label="Date filter">
+        <label className="text-xs text-gray-500 dark:text-gray-400">
+          From
+          <input
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFrom(e.target.value)}
+            className="block mt-1 px-2 py-1 text-sm rounded border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-gray-900 dark:text-white"
+          />
+        </label>
+        <label className="text-xs text-gray-500 dark:text-gray-400">
+          To
+          <input
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setTo(e.target.value)}
+            className="block mt-1 px-2 py-1 text-sm rounded border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-gray-900 dark:text-white"
+          />
+        </label>
+        {(from || to) && (
+          <button
+            onClick={() => {
+              setFrom('');
+              setTo('');
+            }}
+            className="text-xs px-2 py-1.5 rounded border border-gray-200 dark:border-zinc-800 text-gray-500 dark:text-zinc-400 hover:border-gray-400"
+          >
+            Clear
+          </button>
+        )}
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white dark:bg-zinc-950 rounded-lg border border-gray-200 dark:border-zinc-800 p-5">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Coverage</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                <XAxis dataKey="symbol" stroke="#a1a1aa" fontSize={12} />
-                <YAxis stroke="#a1a1aa" fontSize={12} />
-                <Tooltip />
-                <Bar dataKey="covered" stackId="q" fill="#10b981" name="Covered" />
-                <Bar dataKey="uncovered" stackId="q" fill="#ef4444" name="Uncovered" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 min-w-0">
+          <EventPriceChart
+            events={datedEvents}
+            ticks={ticks}
+            names={snapshot.names}
+            designated={[...DESIGNATED_SYMBOLS]}
+            focusSymbol={focus || undefined}
+          />
         </div>
 
-        <div className="bg-white dark:bg-zinc-950 rounded-lg border border-gray-200 dark:border-zinc-800">
+        <div className="bg-white dark:bg-zinc-950 rounded-lg border border-gray-200 dark:border-zinc-800 flex flex-col min-w-0">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-zinc-900">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">Event feed</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Last 120 engine order events
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5" data-testid="feed-count">
+              {from || to
+                ? `${sortedEvents.length} engine order events in range`
+                : 'Last 120 engine order events'}
             </p>
           </div>
-          <div className="divide-y divide-gray-100 dark:divide-zinc-900 max-h-[320px] overflow-y-auto">
+          <div className="divide-y divide-gray-100 dark:divide-zinc-900 max-h-[440px] overflow-y-auto">
             {sortedEvents.length === 0 ? (
               <p className="px-5 py-8 text-sm text-gray-400 dark:text-zinc-600 text-center">
-                Waiting for the first SSE snapshot
+                {from || to ? 'No events in this date range' : 'Waiting for the first SSE snapshot'}
               </p>
             ) : (
               sortedEvents.map((event, i) => (
@@ -274,6 +300,22 @@ export default function VolatilityPuts({
               ))
             )}
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-zinc-950 rounded-lg border border-gray-200 dark:border-zinc-800 p-5">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Coverage</h3>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+              <XAxis dataKey="symbol" stroke="#a1a1aa" fontSize={12} />
+              <YAxis stroke="#a1a1aa" fontSize={12} />
+              <Tooltip />
+              <Bar dataKey="covered" stackId="q" fill="#10b981" name="Covered" />
+              <Bar dataKey="uncovered" stackId="q" fill="#ef4444" name="Uncovered" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </div>

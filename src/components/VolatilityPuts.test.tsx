@@ -1,7 +1,7 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import VolatilityPuts from './VolatilityPuts';
-import type { StopRiskSnapshot } from '../services/stopEventStream';
+import { inDateRange, type StopRiskSnapshot } from '../services/stopEventStream';
 
 jest.mock('recharts', () => {
   const Original = jest.requireActual('recharts');
@@ -107,6 +107,10 @@ const SNAPSHOT: StopRiskSnapshot = {
 };
 
 describe('VolatilityPuts', () => {
+  // The chart's 1D window is relative to now; pin it just after the fixture events.
+  beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-14T23:00:00Z')));
+  afterEach(() => jest.restoreAllMocks());
+
   it('renders MU/NBIS coverage, the engine event feed, and event tags on the price chart', () => {
     const ticks = { NBIS: [{ symbol: 'NBIS', price: 179, ts: '2026-10-14T22:40:00Z' }] };
     render(<VolatilityPuts snapshot={SNAPSHOT} ticks={ticks} connected focusSymbol="NBIS" />);
@@ -117,5 +121,27 @@ describe('VolatilityPuts', () => {
     expect(screen.getAllByTestId('live-event')[0].textContent).toMatch(/order_filled/);
     expect(screen.getByTestId('scatter').getAttribute('data-count')).toBe('2');
     expect(screen.getByRole('tab', { name: 'NBIS' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('date filter narrows both the event feed and the chart tags', () => {
+    render(<VolatilityPuts snapshot={SNAPSHOT} ticks={{}} connected focusSymbol="NBIS" />);
+    expect(screen.getAllByTestId('live-event')).toHaveLength(2);
+
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-10-16' } });
+    expect(screen.queryAllByTestId('live-event')).toHaveLength(0);
+    expect(screen.getByText('No events in this date range')).toBeTruthy();
+    expect(screen.getByTestId('scatter').getAttribute('data-count')).toBe('0');
+
+    fireEvent.click(screen.getByText('Clear'));
+    expect(screen.getAllByTestId('live-event')).toHaveLength(2);
+  });
+
+  it('inDateRange keeps events inside inclusive local-day bounds', () => {
+    const at = (iso: string) => ({ type: 'engine', ts: iso });
+    const local = (d: string, h: number) => new Date(`${d}T${String(h).padStart(2, '0')}:00:00`).toISOString();
+    const events = [at(local('2026-10-13', 23)), at(local('2026-10-14', 0)), at(local('2026-10-14', 23)), at(local('2026-10-15', 0)), { type: 'engine' }];
+    expect(inDateRange(events, '2026-10-14', '2026-10-14')).toEqual([events[1], events[2]]);
+    expect(inDateRange(events, '2026-10-15', '')).toEqual([events[3]]);
+    expect(inDateRange(events, '', '')).toBe(events);
   });
 });
