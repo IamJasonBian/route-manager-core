@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { useLivePolling } from '../hooks/useLivePolling';
+import LiveStatusIndicator from '../components/LiveStatusIndicator';
 
 interface Airport {
   iataCode: string;
@@ -58,6 +60,14 @@ export default function SearchFlightsPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
+  const lastSearchParamsRef = useRef<{
+    origin: string;
+    destination: string;
+    departureDate: string;
+    returnDate?: string;
+    tripType: 'one-way' | 'round-trip';
+  } | null>(null);
 
   // Airport search states
   const [originInput, setOriginInput] = useState('JFK');
@@ -229,41 +239,77 @@ export default function SearchFlightsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    
-    if (!origin || !destination || !departureDate || (tripType === 'round-trip' && !returnDate)) {
-      setError('Please fill in all required fields');
-      return;
+  const fetchFlights = async (
+    params: {
+      origin: string;
+      destination: string;
+      departureDate: string;
+      returnDate?: string;
+      tripType: 'one-way' | 'round-trip';
+    },
+    options: { silent?: boolean } = {}
+  ) => {
+    const { silent = false } = options;
+    if (!silent) {
+      setIsSearching(true);
+      setError(null);
     }
-    
-    setIsSearching(true);
-    
+
     try {
       const response = await axios.post('/.netlify/functions/search-flights', {
-        origin: origin.toUpperCase(),
-        destination: destination.toUpperCase(),
-        departureDate,
-        returnDate: tripType === 'round-trip' ? returnDate : undefined,
+        origin: params.origin.toUpperCase(),
+        destination: params.destination.toUpperCase(),
+        departureDate: params.departureDate,
+        returnDate: params.tripType === 'round-trip' ? params.returnDate : undefined,
         maxResults: 10,
         nonStop: false
       });
-      
+
       if (response.data && response.data.data) {
         setFlights(response.data.data);
-      } else {
+        setError(null);
+      } else if (!silent) {
         setError('No flights found. Please try different search criteria.');
         setFlights([]);
       }
     } catch (err) {
       console.error('Error searching flights:', err);
-      setError('Failed to search for flights. Please try again later.');
-      setFlights([]);
+      if (!silent) {
+        setError('Failed to search for flights. Please try again later.');
+        setFlights([]);
+      }
     } finally {
-      setIsSearching(false);
+      if (!silent) setIsSearching(false);
     }
   };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!origin || !destination || !departureDate || (tripType === 'round-trip' && !returnDate)) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    const params = { origin, destination, departureDate, returnDate, tripType };
+    lastSearchParamsRef.current = params;
+    setHasSearched(true);
+    await fetchFlights(params);
+    markUpdated();
+  };
+
+  const pollFetcher = useCallback(async () => {
+    if (isSearching) return;
+    if (!lastSearchParamsRef.current) return;
+    await fetchFlights(lastSearchParamsRef.current, { silent: true });
+  }, [isSearching]);
+
+  const { isRefreshing, lastUpdated, markUpdated } = useLivePolling({
+    enabled: hasSearched,
+    intervalMs: 5000,
+    fetcher: pollFetcher,
+  });
 
   return (
     <div className="min-h-screen px-4 py-8 sm:p-8">
@@ -431,9 +477,18 @@ export default function SearchFlightsPage() {
           
           {/* Search results */}
           <div className="mt-8">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">
-              Search Results {flights.length > 0 && `(${flights.length} found)`}
-            </h2>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-medium text-gray-900">
+                Search Results {flights.length > 0 && `(${flights.length} found)`}
+              </h2>
+              {hasSearched && (
+                <LiveStatusIndicator
+                  isRefreshing={isRefreshing}
+                  lastUpdated={lastUpdated}
+                  intervalMs={5000}
+                />
+              )}
+            </div>
             
             {error && (
               <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
