@@ -1,3 +1,28 @@
+# Booking client (public sources)
+
+`book.mjs` quotes from **Kiwi.com's public search** (no credentials; Amadeus
+Self-Service keys were disabled on 2026-07-17) and tracks each trip as a
+`Booking` (`src/types/booking.ts`, modeled on IATA NDC Offer→Order, Duffel's
+Order and schema.org `FlightReservation`). Records live in `.bookings/`.
+
+```
+quoted ──► handoff ──► confirmed ──► ticketed
+   │  └──► held ──────┘    │
+   └──► cancelled / expired / failed ◄──┘
+```
+
+```bash
+npm run book -- quote --from "New York" --to DTW --depart 2026-11-13 --return 2026-11-15 --nonstop
+npm run book -- handoff  <id>                 # prints Kiwi checkout URL — you pay there
+npm run book -- confirm  <id> --pnr ABC123    # record the seller's PNR (+ --paid 360)
+npm run book -- ticket   <id> --tickets 2792345678901
+npm run book -- list
+npm run test:booking
+```
+
+It never pays. Kiwi doesn't carry Delta on NYC↔DTW, so for DL itineraries use
+the airline-direct flow below (`book:delta`), then `confirm` the booking here.
+
 # Google auth → Delta credentials → trip booking
 
 A four-layer pipeline that authenticates you to Google Cloud, pulls your own

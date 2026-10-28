@@ -1,4 +1,19 @@
 import Amadeus from 'amadeus';
+import { searchKiwi, toAmadeusOffer } from './lib/kiwi.js';
+
+// Amadeus Self-Service keys were disabled on 2026-07-17, so Kiwi's public search
+// is the default. Set FLIGHT_SEARCH_PROVIDER=amadeus to try Amadeus first
+// (falls back to Kiwi on failure).
+const PROVIDER = (process.env.FLIGHT_SEARCH_PROVIDER || 'kiwi').toLowerCase();
+
+async function searchViaKiwi(params) {
+  const { currency, itineraries } = await searchKiwi(params);
+  const max = Number(params.maxResults || 10);
+  return {
+    data: itineraries.slice(0, max).map((it, i) => toAmadeusOffer(it, i, currency)),
+    meta: { count: Math.min(itineraries.length, max), source: 'kiwi' },
+  };
+}
 
 // Helper function to get config with fallbacks
 const getConfig = async () => {
@@ -65,6 +80,37 @@ export const handler = async (event, context) => {
     };
   }
 
+  let params;
+  try {
+    params = JSON.parse(event.body || '{}');
+  } catch {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) };
+  }
+
+  // Validate required parameters
+  if (!params.origin || !params.destination || !params.departureDate) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({
+        error: 'Missing required parameters: origin, destination, departureDate'
+      })
+    };
+  }
+
+  if (PROVIDER !== 'amadeus') {
+    try {
+      return { statusCode: 200, headers, body: JSON.stringify(await searchViaKiwi(params)) };
+    } catch (error) {
+      console.error('Kiwi search error:', error);
+      return {
+        statusCode: 502,
+        headers,
+        body: JSON.stringify({ error: 'Failed to fetch flight data', message: error.message, source: 'kiwi' })
+      };
+    }
+  }
+
   try {
     // Initialize Amadeus client if not already initialized
     if (!amadeus) {
@@ -76,19 +122,6 @@ export const handler = async (event, context) => {
         hostname: config.hostname
       });
       console.log('Amadeus client initialized successfully');
-    }
-
-    const params = JSON.parse(event.body);
-    
-    // Validate required parameters
-    if (!params.origin || !params.destination || !params.departureDate) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({
-          error: 'Missing required parameters: origin, destination, departureDate'
-        })
-      };
     }
 
     console.log('Searching flights with params:', {
@@ -118,11 +151,18 @@ export const handler = async (event, context) => {
       headers,
       body: JSON.stringify({
         data: response.data || [],
-        meta: response.meta || {}
+        meta: { ...(response.meta || {}), source: 'amadeus' }
       })
     };
   } catch (error) {
     console.error('Amadeus API error:', error);
+
+    try {
+      console.log('Falling back to Kiwi search');
+      return { statusCode: 200, headers, body: JSON.stringify(await searchViaKiwi(params)) };
+    } catch (kiwiError) {
+      console.error('Kiwi fallback failed:', kiwiError);
+    }
     
     // Enhanced error logging
     const errorDetails = {

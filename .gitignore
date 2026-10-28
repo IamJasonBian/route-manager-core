@@ -46,3 +46,6 @@ cdk/cdk.out
 *.js.map
 *.d.ts
 !src/vite-env.d.ts
+
+# Local booking records (scripts/booking/book.mjs)
+.bookings/
