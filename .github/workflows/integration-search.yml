@@ -1,0 +1,32 @@
+# Manual integration: verify search-flights returns offers for JFK → LAX.
+# Run from Actions tab → "Integration search JFK-LAX" → enter your deployed site origin (e.g. https://your-site.netlify.app).
+
+name: Integration search JFK-LAX
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Site origin (no trailing slash), e.g. https://your-app.netlify.app'
+        required: true
+        type: string
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: POST search-flights (JFK → LAX)
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+        run: npm run test:integration:search

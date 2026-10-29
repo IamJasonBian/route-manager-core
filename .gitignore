@@ -1,3 +1,4 @@
+
 # Logs
 logs
 *.log
@@ -31,6 +32,13 @@ dist-ssr
 .env.local
 .env.*.local
 
+# Local secrets / cached browser sessions (delta.com booking)
+.secrets/
+delta-storage-state.json
+
+# Local scrape output (fare JSON + screenshots)
+.scrapes/
+
 # CDK
 cdk/node_modules
 cdk/dist
@@ -38,3 +46,6 @@ cdk/cdk.out
 *.js.map
 *.d.ts
 !src/vite-env.d.ts
+
+# Local booking records (scripts/booking/book.mjs)
+.bookings/

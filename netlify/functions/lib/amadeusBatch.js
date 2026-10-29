@@ -4,49 +4,52 @@
  * @param {string} origin
  * @param {string} destination
  * @param {string[]} dates
+ * @param {{ maxPerDate?: number }} [options] maxPerDate=1 returns the cheapest offer per date
+ *   (legacy shape: one entry per date). maxPerDate>1 returns up to N offers per date as a
+ *   flat array, exposing per-carrier price points for the trends chart slicer.
  */
-export async function getFlightPricesForDates(amadeus, origin, destination, dates) {
-  const pricePromises = dates.map(async (date) => {
-    try {
-      const response = await amadeus.shopping.flightOffersSearch.get({
-        originLocationCode: origin,
-        destinationLocationCode: destination,
-        departureDate: date,
-        adults: '1',
-        max: '1',
-        currencyCode: 'USD',
-      });
+export async function getFlightPricesForDates(amadeus, origin, destination, dates, options = {}) {
+  const maxPerDate = Math.max(1, options.maxPerDate ?? 1);
 
-      if (response.data && response.data.length > 0) {
-        const flight = response.data[0];
-        const price = parseFloat(flight.price.total);
-        const firstSegment = flight.itineraries[0].segments[0];
-        const lastSegment =
-          flight.itineraries[0].segments[flight.itineraries[0].segments.length - 1];
+  const offerArrays = await Promise.all(
+    dates.map(async (date) => {
+      try {
+        const response = await amadeus.shopping.flightOffersSearch.get({
+          originLocationCode: origin,
+          destinationLocationCode: destination,
+          departureDate: date,
+          adults: '1',
+          max: String(maxPerDate),
+          currencyCode: 'USD',
+        });
 
-        return {
-          date,
-          price,
-          flightDetails: {
-            carrier: firstSegment.carrierCode,
-            flightNumber: `${firstSegment.carrierCode}${firstSegment.number}`,
-            departureTime: firstSegment.departure.at,
-            arrivalTime: lastSegment.arrival.at,
-            duration: flight.itineraries[0].duration,
-            stops: flight.itineraries[0].segments.length - 1,
-            bookingClass:
-              flight.travelerPricings?.[0]?.fareDetailsBySegment?.[0]?.cabin || 'ECONOMY',
-          },
-        };
+        if (!response.data || response.data.length === 0) return [];
+
+        return response.data.map((flight) => {
+          const itinerary = flight.itineraries[0];
+          const firstSegment = itinerary.segments[0];
+          const lastSegment = itinerary.segments[itinerary.segments.length - 1];
+          return {
+            date,
+            price: parseFloat(flight.price.total),
+            flightDetails: {
+              carrier: firstSegment.carrierCode,
+              flightNumber: `${firstSegment.carrierCode}${firstSegment.number}`,
+              departureTime: firstSegment.departure.at,
+              arrivalTime: lastSegment.arrival.at,
+              duration: itinerary.duration,
+              stops: itinerary.segments.length - 1,
+              bookingClass:
+                flight.travelerPricings?.[0]?.fareDetailsBySegment?.[0]?.cabin || 'ECONOMY',
+            },
+          };
+        });
+      } catch (error) {
+        console.error(`Error fetching offers for ${date}:`, error);
+        return [];
       }
+    }),
+  );
 
-      return { date, price: null };
-    } catch (error) {
-      console.error(`Error fetching price for ${date}:`, error);
-      return { date, price: null };
-    }
-  });
-
-  const prices = await Promise.all(pricePromises);
-  return prices.filter((p) => p.price !== null);
+  return offerArrays.flat().filter((p) => Number.isFinite(p.price));
 }

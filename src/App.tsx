@@ -5,6 +5,7 @@ import { Loader2, Plane } from 'lucide-react';
 import HomePage from './pages/HomePage';
 import SearchFlightsPage from './pages/SearchFlightsPage';
 import PriceTrendsPage from './pages/PriceTrendsPage';
+import PipelinesPage from './pages/PipelinesPage';
 
 const PlanningPage = lazy(() => import('./pages/PlanningPage'));
 
@@ -65,6 +66,9 @@ function AppContent() {
             <NavLink to="/trends" className={navLinkClass}>
               Trends
             </NavLink>
+            <NavLink to="/pipelines" className={navLinkClass}>
+              Pipelines
+            </NavLink>
           </nav>
         </div>
 
@@ -82,6 +86,9 @@ function AppContent() {
             <NavLink to="/trends" className={navLinkClass}>
               Trends
             </NavLink>
+            <NavLink to="/pipelines" className={navLinkClass}>
+              Pipelines
+            </NavLink>
           </nav>
         </div>
       </header>
@@ -98,6 +105,7 @@ function AppContent() {
           />
           <Route path="/search" element={<SearchFlightsPage />} />
           <Route path="/trends" element={<PriceTrendsPage />} />
+          <Route path="/pipelines" element={<PipelinesPage />} />
           <Route
             path="/plan"
             element={

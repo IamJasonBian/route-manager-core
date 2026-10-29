@@ -285,10 +285,12 @@ export const getFlightPrices = async (
     if (response.data && response.data.prices) {
       console.log(`Received ${response.data.prices.length} prices from ${response.data.source} source`);
       
-      // Convert date strings to Date objects for compatibility
+      // Convert date strings to Date objects, preserve flightDetails so the
+      // carrier slicer in RouteCard / PriceChart can group by airline.
       return response.data.prices.map((price: any) => ({
         date: new Date(price.date),
-        price: price.price
+        price: price.price,
+        flightDetails: price.flightDetails,
       }));
     }
     
@@ -435,6 +437,123 @@ export const generateMockPrices = (basePrice: number = 550): FlightPrice[] => {
 
 // Alias for backwards compatibility in tests
 export const generateMockRoutes = (): ApiRoute[] => generateFallbackRoutes();
+
+// ---------- Ski Trips API ----------
+
+export type SkiTripTransportMode = 'flight' | 'bus';
+
+export interface SkiTripStop {
+  code: string;
+  name: string;
+}
+
+export interface SkiTripOutboundLeg {
+  operator: string;
+  number?: string;
+  from: SkiTripStop;
+  to: SkiTripStop;
+  depart: string;
+  arrive: string;
+  durationMin: number;
+  priceUsd: number;
+}
+
+export interface SkiTripReturnOption extends SkiTripOutboundLeg {
+  id: string;
+  label: string;
+  recommended: boolean;
+  note?: string;
+}
+
+export interface SkiTripTransport {
+  mode: SkiTripTransportMode;
+  outbound: SkiTripOutboundLeg;
+  returnOptions: SkiTripReturnOption[];
+  groundTransferMin: number;
+  groundTransferNote: string;
+}
+
+export interface SkiTripMountainStats {
+  verticalFt: number;
+  trails: number;
+  lifts: number;
+}
+
+export interface SkiTripTotals {
+  transportPriceUsdMin: number;
+  transportPriceUsdMax: number;
+  transitTimeMinOneWay: number;
+}
+
+export interface SkiTrip {
+  id: string;
+  resort: string;
+  state: string;
+  epicPass: boolean;
+  heroAccent: string;
+  mountainStats: SkiTripMountainStats;
+  transport: SkiTripTransport;
+  totals: SkiTripTotals;
+  notes: string;
+  sources: string[];
+}
+
+export interface SkiTripsWeekend {
+  depart: string;
+  return: string;
+  label: string;
+}
+
+export interface SkiTripsOrigin {
+  city: string;
+  hubs: string[];
+}
+
+export interface SkiTripsListResponse {
+  generatedAt: string;
+  seasonTarget: string;
+  weekend: SkiTripsWeekend;
+  priceBasis: string;
+  origin: SkiTripsOrigin;
+  trips: SkiTrip[];
+}
+
+export interface SkiTripSingleResponse {
+  generatedAt: string;
+  seasonTarget: string;
+  weekend: SkiTripsWeekend;
+  priceBasis: string;
+  origin: SkiTripsOrigin;
+  trip: SkiTrip;
+}
+
+export type SkiTripsResponse = SkiTripsListResponse;
+
+export interface GetSkiTripsOptions {
+  mode?: SkiTripTransportMode;
+  id?: string;
+  signal?: AbortSignal;
+}
+
+export async function getSkiTrips(opts: { id: string } & Omit<GetSkiTripsOptions, 'id'>): Promise<SkiTripSingleResponse>;
+export async function getSkiTrips(opts?: Omit<GetSkiTripsOptions, 'id'>): Promise<SkiTripsListResponse>;
+export async function getSkiTrips(
+  opts?: GetSkiTripsOptions
+): Promise<SkiTripsListResponse | SkiTripSingleResponse> {
+  const params: Record<string, string> = {};
+  if (opts?.id) params.id = opts.id;
+  if (opts?.mode) params.mode = opts.mode;
+  try {
+    const response = await apiClient.get<SkiTripsListResponse | SkiTripSingleResponse>(
+      '/ski-trips',
+      { params, signal: opts?.signal }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching ski trips:', error);
+    throw error;
+  }
+}
 
 // Import default routes
 import { defaultRoutes } from '../config/defaultRoutes';
