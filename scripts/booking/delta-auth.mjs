@@ -28,7 +28,7 @@ const ACCOUNT_URL = process.env.DELTA_ACCOUNT_URL || 'https://www.delta.com/mypr
 
 // Override any selector via env (e.g. DELTA_SEL_USERNAME='#user') if Delta moves.
 const DELTA_SELECTORS = {
-  username: process.env.DELTA_SEL_USERNAME || '#login-form-userName, input[name="userId"], #userId',
+  username: process.env.DELTA_SEL_USERNAME || '#userId-input, #login-form-userName, input[name="userId"], #userId',
   password: process.env.DELTA_SEL_PASSWORD || '#password-input, input[name="password"], #password',
   submit: process.env.DELTA_SEL_SUBMIT || 'button[type="submit"], #btn-login, button:has-text("Log In")',
   // Markers that the login screen wants a one-time passcode.
