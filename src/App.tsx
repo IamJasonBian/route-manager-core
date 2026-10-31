@@ -15,7 +15,7 @@ function prefetchPlanningChunk() {
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'rounded-full px-3.5 py-2 text-sm font-medium transition-colors duration-200',
+    'shrink-0 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium transition-colors duration-200',
     isActive
       ? 'bg-white/10 text-white shadow-inner shadow-white/5'
       : 'text-slate-400 hover:bg-white/5 hover:text-white',
@@ -73,7 +73,7 @@ function AppContent() {
         </div>
 
         <div className="border-t border-white/5 px-4 py-2 md:hidden">
-          <nav className="flex flex-wrap justify-center gap-1" aria-label="Primary mobile">
+          <nav className="-mx-4 flex gap-1 overflow-x-auto px-4 [scrollbar-width:none]" aria-label="Primary mobile">
             <NavLink to="/" className={navLinkClass} end>
               Home
             </NavLink>

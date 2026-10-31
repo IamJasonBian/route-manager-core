@@ -1,16 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Loader2, MapPin, RefreshCw, X } from 'lucide-react';
 import axios from 'axios';
 import PriceHistoryChart, { ChartType } from '../components/PriceHistoryChart';
 import { getPriceHistory } from '../services/api';
-
-interface Airport {
-  iataCode: string;
-  name: string;
-  cityName: string;
-  countryName: string;
-  type: string;
-}
+import PageHeader from '../components/ui/PageHeader';
+import AirportField, { type Airport } from '../components/ui/AirportField';
 
 interface FlightDetails {
   carrier?: string;
@@ -39,7 +33,7 @@ function TabPanel({ children, isActive, id }: TabPanelProps) {
     <div
       role="tabpanel"
       id={id}
-      className={`p-4 ${isActive ? 'block' : 'hidden'}`}
+      className={`pt-4 ${isActive ? 'block' : 'hidden'}`}
       aria-labelledby={`${id}-tab`}
     >
       {children}
@@ -125,11 +119,32 @@ export default function PriceTrendsPage() {
     });
   }, [prices, stopsFilter]);
 
+  // Headline numbers above the chart: where today sits against the window.
+  const stats = useMemo(() => {
+    if (filteredPrices.length === 0) return null;
+    const values = filteredPrices.map((p) => p.price);
+    const latest = values[values.length - 1];
+    const low = Math.min(...values);
+    const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const vsAvg = ((latest - avg) / avg) * 100;
+    const usd = (v: number) => `$${Math.round(v)}`;
+    return [
+      { label: 'Latest', value: usd(latest) },
+      { label: 'Low', value: usd(low), tone: 'text-emerald-300' },
+      { label: 'Average', value: usd(avg) },
+      {
+        label: 'Latest vs avg',
+        value: `${vsAvg > 0 ? '+' : ''}${vsAvg.toFixed(1)}%`,
+        tone: vsAvg > 0 ? 'text-rose-300' : 'text-emerald-300',
+      },
+    ];
+  }, [filteredPrices]);
+
   const chartTypes: ChartType[] = ['line', 'burn-down', 'draw-down'];
   const chartTitles = [
-    'Price History',
-    'Price Burn Down',
-    'Price Draw Down'
+    'History',
+    'Burn down',
+    'Draw down'
   ];
 
   const handleTabChange = (newValue: number) => {
@@ -302,250 +317,151 @@ export default function PriceTrendsPage() {
   };
 
   return (
-    <div className="min-h-screen px-4 py-8 sm:p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-8 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Price Trends</h1>
-            <p className="text-sm text-slate-500">History and bands for your corridor</p>
-          </div>
-          <Link to="/" className="text-sm font-medium text-cyan-400/90 hover:text-cyan-300">
-            ← Back home
-          </Link>
-        </div>
-        
-        {showLocationPrompt && (
-          <div className="mb-6 rounded-xl border border-cyan-500/20 bg-slate-900/60 p-4 backdrop-blur-sm">
-            <div className="flex items-start">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-cyan-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3 flex-1">
-                <h3 className="text-sm font-medium text-cyan-200">Set your home airport</h3>
-                <p className="mt-1 text-sm text-slate-400">
-                  {detectedAirport
-                    ? `We detected you're near ${detectedAirport.name} (${detectedAirport.code}). Use this as your home airport?`
-                    : 'Allow location access to find your nearest airport.'}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {!detectedAirport && !isDetectingLocation && (
-                    <button
-                      onClick={requestLocation}
-                      className="flex items-center rounded-md border border-transparent bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500"
-                    >
-                      <svg className="h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                      </svg>
-                      Use My Location
-                    </button>
-                  )}
-                  {isDetectingLocation && (
-                    <div className="flex items-center text-sm text-slate-400">
-                      <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Detecting location...
-                    </div>
-                  )}
-                  {detectedAirport && (
-                    <>
-                      <button
-                        onClick={confirmDetectedAirport}
-                        className="rounded-md border border-transparent bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500"
-                      >
-                        Yes, use {detectedAirport.code}
-                      </button>
-                      <button
-                        onClick={() => setDetectedAirport(null)}
-                        className="rounded-md border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/15"
-                      >
-                        Try again
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={dismissLocationPrompt}
-                className="ml-4 text-slate-500 hover:text-cyan-400"
-                title="Skip and use default (JFK)"
-              >
-                <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+      <PageHeader eyebrow="Price history" title="Trends" subtitle="Is today's fare noise or signal? History and drawdowns for one route." />
+
+      {showLocationPrompt && (
+        <div className="panel mt-6 flex items-start gap-3 border-cyan-400/20 p-4">
+          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-cyan-400" aria-hidden />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-white">Set your home airport</p>
+            <p className="mt-0.5 text-sm text-slate-400">
+              {detectedAirport
+                ? `You look close to ${detectedAirport.name} (${detectedAirport.code}). Use it as your home airport?`
+                : 'Share your location to pick the nearest airport.'}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {!detectedAirport && !isDetectingLocation && (
+                <button onClick={requestLocation} className="btn-primary">
+                  <MapPin className="h-4 w-4" /> Use my location
+                </button>
+              )}
+              {isDetectingLocation && (
+                <span className="flex items-center gap-2 text-sm text-slate-400">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Finding you…
+                </span>
+              )}
+              {detectedAirport && (
+                <>
+                  <button onClick={confirmDetectedAirport} className="btn-primary">
+                    Use {detectedAirport.code}
+                  </button>
+                  <button onClick={() => setDetectedAirport(null)} className="btn-ghost">
+                    Try again
+                  </button>
+                </>
+              )}
             </div>
           </div>
+          <button
+            onClick={dismissLocationPrompt}
+            className="rounded-md p-1 text-slate-500 hover:bg-white/5 hover:text-white"
+            title="Skip and use JFK"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <section className="panel mt-6 p-5 sm:p-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
+          <AirportField
+            id="origin"
+            label="From"
+            placeholder="JFK, NYC…"
+            containerRef={originRef}
+            value={originInput}
+            onChange={handleOriginInputChange}
+            onFocus={() => originInput.length >= 2 && setShowOriginSuggestions(true)}
+            suggestions={showOriginSuggestions ? originSuggestions : []}
+            onSelect={handleSelectOrigin}
+          />
+          <AirportField
+            id="destination"
+            label="To"
+            placeholder="DTW, Detroit…"
+            containerRef={destinationRef}
+            value={destinationInput}
+            onChange={handleDestinationInputChange}
+            onFocus={() => destinationInput.length >= 2 && setShowDestinationSuggestions(true)}
+            suggestions={showDestinationSuggestions ? destinationSuggestions : []}
+            onSelect={handleSelectDestination}
+          />
+          <div>
+            <label htmlFor="stops" className="field-label">Stops</label>
+            <select
+              id="stops"
+              value={stopsFilter}
+              onChange={(e) => setStopsFilter(e.target.value as StopsFilter)}
+              className="input"
+            >
+              <option value="cheapest">Cheapest</option>
+              <option value="0">Nonstop</option>
+              <option value="1">1 stop</option>
+              <option value="2">2 stops</option>
+              <option value="3+">3+ stops</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={handleUpdate}
+            disabled={isLoading || isSearching}
+            className="btn-primary h-[38px] sm:col-span-2 lg:col-span-1"
+          >
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Update
+          </button>
+        </div>
+
+        {stats && (
+          <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:grid-cols-4">
+            {stats.map((st) => (
+              <div key={st.label} className="bg-slate-950/60 px-4 py-3">
+                <dt className="eyebrow">{st.label}</dt>
+                <dd className={`mt-1 text-lg font-semibold ${st.tone ?? 'text-white'}`}>{st.value}</dd>
+              </div>
+            ))}
+          </dl>
         )}
 
-        <div className="surface-paper p-6">
-          <div className="mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              {/* Origin Input with Autocomplete */}
-              <div ref={originRef} className="relative">
-                <label htmlFor="origin" className="block text-sm font-medium text-gray-700 mb-1">From</label>
-                <input
-                  type="text"
-                  id="origin"
-                  value={originInput}
-                  onChange={handleOriginInputChange}
-                  onFocus={() => originInput.length >= 2 && setShowOriginSuggestions(true)}
-                  placeholder="City or IATA code (e.g., JFK, NYC)"
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm"
-                />
-                {showOriginSuggestions && originSuggestions.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-                    {originSuggestions.map((airport) => (
-                      <div
-                        key={airport.iataCode}
-                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                        onClick={() => handleSelectOrigin(airport)}
-                      >
-                        <div className="font-medium text-sm">{airport.iataCode}</div>
-                        <div className="text-xs text-gray-500">
-                          {airport.name}
-                          {airport.cityName && `, ${airport.cityName}`}
-                          {airport.countryName && `, ${airport.countryName}`}
-                        </div>
-                      </div>
-                    ))}
+        <div className="mt-6">
+          <div className="segmented" role="tablist" aria-label="Chart types">
+            {chartTypes.map((type, index) => (
+              <button
+                key={type}
+                onClick={() => handleTabChange(index)}
+                aria-pressed={tabValue === index}
+                aria-selected={tabValue === index}
+                aria-controls={`${type}-panel`}
+                id={`${type}-tab`}
+                role="tab"
+                type="button"
+              >
+                {chartTitles[index]}
+              </button>
+            ))}
+          </div>
+
+          {chartTypes.map((type, index) => (
+            <TabPanel key={type} id={`${type}-panel`} isActive={tabValue === index}>
+              <div className="h-96">
+                {isLoading ? (
+                  <div className="h-full animate-pulse rounded-xl bg-white/[0.03]" />
+                ) : error ? (
+                  <p className="alert-error">{error}</p>
+                ) : filteredPrices.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                    No fares recorded with {stopsFilter === '0' ? 'nonstop' : stopsFilter === '3+' ? '3+ stops' : `${stopsFilter} stop${stopsFilter === '1' ? '' : 's'}`}
                   </div>
+                ) : (
+                  <PriceHistoryChart prices={filteredPrices} loading={isLoading} chartType={type} title={chartTitles[index]} />
                 )}
               </div>
-
-              {/* Destination Input with Autocomplete */}
-              <div ref={destinationRef} className="relative">
-                <label htmlFor="destination" className="block text-sm font-medium text-gray-700 mb-1">To</label>
-                <input
-                  type="text"
-                  id="destination"
-                  value={destinationInput}
-                  onChange={handleDestinationInputChange}
-                  onFocus={() => destinationInput.length >= 2 && setShowDestinationSuggestions(true)}
-                  placeholder="City or IATA code (e.g., LHR, London)"
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm"
-                />
-                {showDestinationSuggestions && destinationSuggestions.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-                    {destinationSuggestions.map((airport) => (
-                      <div
-                        key={airport.iataCode}
-                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                        onClick={() => handleSelectDestination(airport)}
-                      >
-                        <div className="font-medium text-sm">{airport.iataCode}</div>
-                        <div className="text-xs text-gray-500">
-                          {airport.name}
-                          {airport.cityName && `, ${airport.cityName}`}
-                          {airport.countryName && `, ${airport.countryName}`}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Stops Filter */}
-              <div>
-                <label htmlFor="stops" className="block text-sm font-medium text-gray-700 mb-1">Stops</label>
-                <select
-                  id="stops"
-                  value={stopsFilter}
-                  onChange={(e) => setStopsFilter(e.target.value as StopsFilter)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm"
-                >
-                  <option value="cheapest">Cheapest</option>
-                  <option value="0">Nonstop</option>
-                  <option value="1">1 Stop</option>
-                  <option value="2">2 Stops</option>
-                  <option value="3+">3+ Stops</option>
-                </select>
-              </div>
-
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={handleUpdate}
-                  disabled={isLoading || isSearching}
-                  className={`w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${
-                    isLoading || isSearching ? 'bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-500'
-                  } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500`}
-                >
-                  {isLoading ? 'Loading...' : 'Update Chart'}
-                </button>
-              </div>
-            </div>
-            
-            <div className="mt-6">
-              <div className="border-b border-gray-200">
-                <nav className="flex -mb-px" aria-label="Chart types">
-                  {chartTypes.map((type, index) => (
-                    <button
-                      key={type}
-                      onClick={() => handleTabChange(index)}
-                      className={`py-4 px-6 text-center border-b-2 font-medium text-sm ${
-                        tabValue === index
-                          ? 'border-cyan-500 text-cyan-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }`}
-                      id={`${type}-tab`}
-                      aria-controls={`${type}-panel`}
-                      role="tab"
-                      type="button"
-                    >
-                      {chartTitles[index]}
-                    </button>
-                  ))}
-                </nav>
-              </div>
-              
-              {chartTypes.map((type, index) => (
-                <TabPanel 
-                  key={type} 
-                  id={`${type}-panel`}
-                  isActive={tabValue === index}
-                >
-                  <div className="h-96">
-                    {isLoading ? (
-                      <div className="flex items-center justify-center h-full">
-                        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
-                      </div>
-                    ) : error ? (
-                      <div className="bg-red-50 border-l-4 border-red-400 p-4">
-                        <div className="flex">
-                          <div className="flex-shrink-0">
-                            <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                            </svg>
-                          </div>
-                          <div className="ml-3">
-                            <p className="text-sm text-red-700">{error}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ) : filteredPrices.length === 0 ? (
-                      <div className="flex items-center justify-center h-full text-gray-500">
-                        No flights found with {stopsFilter === '0' ? 'nonstop' : stopsFilter === '3+' ? '3+ stops' : `${stopsFilter} stop${stopsFilter === '1' ? '' : 's'}`}
-                      </div>
-                    ) : (
-                      <PriceHistoryChart
-                        prices={filteredPrices}
-                        loading={isLoading}
-                        chartType={type}
-                        title={chartTitles[index]}
-                      />
-                    )}
-                  </div>
-                </TabPanel>
-              ))}
-          </div>
-          </div>
-          
+            </TabPanel>
+          ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

@@ -86,21 +86,21 @@ const PriceHistoryChart: React.FC<PriceHistoryChartProps> = ({
     const labels = prices.map(p => p.recorded_at);
     let data: number[] = [];
     let label = 'Price ($)';
-    let borderColor = 'rgb(59, 130, 246)';
-    let backgroundColor = 'rgba(59, 130, 246, 0.1)';
+    let borderColor = 'rgb(34, 211, 238)';
+    let backgroundColor = 'rgba(34, 211, 238, 0.08)';
 
     switch (chartType) {
       case 'burn-down':
         data = calculateBurnDownData(prices);
         label = 'Price Drop ($)';
-        borderColor = 'rgb(16, 185, 129)';
-        backgroundColor = 'rgba(16, 185, 129, 0.1)';
+        borderColor = 'rgb(52, 211, 153)';
+        backgroundColor = 'rgba(52, 211, 153, 0.08)';
         break;
       case 'draw-down':
         data = calculateDrawDownData(prices);
         label = 'Draw Down (%)';
-        borderColor = 'rgb(239, 68, 68)';
-        backgroundColor = 'rgba(239, 68, 68, 0.1)';
+        borderColor = 'rgb(251, 113, 133)';
+        backgroundColor = 'rgba(251, 113, 133, 0.08)';
         break;
       default: // 'line'
         data = prices.map(p => p.price);
@@ -115,9 +115,9 @@ const PriceHistoryChart: React.FC<PriceHistoryChartProps> = ({
           data,
           borderColor,
           backgroundColor,
-          tension: 0.4,
-          pointRadius: 3,
-          pointHoverRadius: 5,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHoverRadius: 4,
           fill: true,
           borderWidth: 2,
         }
@@ -131,7 +131,7 @@ const PriceHistoryChart: React.FC<PriceHistoryChartProps> = ({
       maintainAspectRatio: false,
       plugins: {
         title: {
-          display: true,
+          display: false,
           text: title,
           font: {
             size: 16,
@@ -229,13 +229,13 @@ const PriceHistoryChart: React.FC<PriceHistoryChartProps> = ({
       title: {
         display: true,
         text: 'Date',
-        color: '#6B7280'
+        color: '#64748b'
       },
       grid: {
         display: false
       },
       ticks: {
-        color: '#6B7280'
+        color: '#64748b'
       }
     };
 
@@ -246,7 +246,7 @@ const PriceHistoryChart: React.FC<PriceHistoryChartProps> = ({
         display: true,
         text: chartType === 'draw-down' ? 'Draw Down (%)' : 
               chartType === 'burn-down' ? 'Price Drop ($)' : 'Price ($)',
-        color: '#6B7280'
+        color: '#64748b'
       },
       ticks: {
         callback: (value: string | number) => {
@@ -255,10 +255,10 @@ const PriceHistoryChart: React.FC<PriceHistoryChartProps> = ({
           }
           return `$${value}`;
         },
-        color: '#6B7280'
+        color: '#64748b'
       },
       grid: {
-        color: 'rgba(0, 0, 0, 0.05)'
+        color: 'rgba(255, 255, 255, 0.05)'
       }
     };
 
@@ -273,13 +273,13 @@ const PriceHistoryChart: React.FC<PriceHistoryChartProps> = ({
   }, [chartType, title]);
 
   return (
-    <div className={`relative bg-white rounded-lg shadow p-4 ${className}`} style={{ minHeight: '400px' }}>
+    <div className={`relative h-full ${className}`}>
       {loading ? (
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-400"></div>
         </div>
       ) : prices.length === 0 ? (
-        <div className="flex items-center justify-center h-64 text-gray-500">
+        <div className="flex items-center justify-center h-64 text-slate-500">
           No price data available
         </div>
       ) : (
