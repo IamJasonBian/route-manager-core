@@ -1,16 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { ExternalLink, Loader2, Plane, Search } from 'lucide-react';
 import axios from 'axios';
 import { useLivePolling } from '../hooks/useLivePolling';
 import LiveStatusIndicator from '../components/LiveStatusIndicator';
-
-interface Airport {
-  iataCode: string;
-  name: string;
-  cityName: string;
-  countryName: string;
-  type: string;
-}
+import PageHeader from '../components/ui/PageHeader';
+import AirportField, { type Airport } from '../components/ui/AirportField';
 
 interface Flight {
   id: string;
@@ -287,12 +281,18 @@ export default function SearchFlightsPage() {
     e.preventDefault();
     setError(null);
 
-    if (!origin || !destination || !departureDate || (tripType === 'round-trip' && !returnDate)) {
+    // Typed codes count even when no suggestion was picked.
+    const from = originInput.trim() || origin;
+    const to = destinationInput.trim() || destination;
+    setOrigin(from);
+    setDestination(to);
+
+    if (!from || !to || !departureDate || (tripType === 'round-trip' && !returnDate)) {
       setError('Please fill in all required fields');
       return;
     }
 
-    const params = { origin, destination, departureDate, returnDate, tripType };
+    const params = { origin: from, destination: to, departureDate, returnDate, tripType };
     lastSearchParamsRef.current = params;
     setHasSearched(true);
     await fetchFlights(params);
@@ -311,311 +311,172 @@ export default function SearchFlightsPage() {
     fetcher: pollFetcher,
   });
 
+  const today = new Date().toISOString().split('T')[0];
+
   return (
-    <div className="min-h-screen px-4 py-8 sm:p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-8 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Search Flights</h1>
-            <p className="text-sm text-slate-500">Shop offers for your dates and route</p>
-          </div>
-          <Link to="/" className="text-sm font-medium text-cyan-400/90 hover:text-cyan-300">
-            ← Back home
-          </Link>
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+      <PageHeader eyebrow="Live offers" title="Search flights" subtitle="Shop fares for your route and dates." />
+
+      <form onSubmit={handleSearch} className="panel mt-6 p-5 sm:p-6">
+        <div className="segmented" role="group" aria-label="Trip type">
+          <button type="button" aria-pressed={tripType === 'one-way'} onClick={() => setTripType('one-way')}>
+            One way
+          </button>
+          <button type="button" aria-pressed={tripType === 'round-trip'} onClick={() => setTripType('round-trip')}>
+            Round trip
+          </button>
         </div>
 
-        <div className="surface-paper p-6 mb-8">
-          <form onSubmit={handleSearch}>
-            {/* Trip Type Toggle */}
-            <div className="flex space-x-2 mb-6">
-              <button
-                type="button"
-                className={`px-4 py-2 rounded-l-lg text-sm font-medium ${tripType === 'one-way' ? 'bg-cyan-600 text-white' : 'bg-slate-100 text-slate-700'}`}
-                onClick={() => setTripType('one-way')}
-              >
-                One Way
-              </button>
-              <button
-                type="button"
-                className={`px-4 py-2 rounded-r-lg text-sm font-medium ${tripType === 'round-trip' ? 'bg-cyan-600 text-white' : 'bg-slate-100 text-slate-700'}`}
-                onClick={() => setTripType('round-trip')}
-              >
-                Round Trip
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              {/* Origin Input with Autocomplete */}
-              <div ref={originRef} className="relative">
-                <label htmlFor="origin" className="block text-sm font-medium text-gray-700 mb-1">From</label>
-                <input
-                  type="text"
-                  id="origin"
-                  value={originInput}
-                  onChange={handleOriginInputChange}
-                  onFocus={() => originInput.length >= 2 && setShowOriginSuggestions(true)}
-                  placeholder="City or IATA code (e.g., JFK, NYC)"
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm"
-                />
-                {showOriginSuggestions && originSuggestions.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-                    {originSuggestions.map((airport) => (
-                      <div
-                        key={airport.iataCode}
-                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                        onClick={() => handleSelectOrigin(airport)}
-                      >
-                        <div className="font-medium text-sm">{airport.iataCode}</div>
-                        <div className="text-xs text-gray-500">
-                          {airport.name}
-                          {airport.cityName && `, ${airport.cityName}`}
-                          {airport.countryName && `, ${airport.countryName}`}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Destination Input with Autocomplete */}
-              <div ref={destinationRef} className="relative">
-                <label htmlFor="destination" className="block text-sm font-medium text-gray-700 mb-1">To</label>
-                <input
-                  type="text"
-                  id="destination"
-                  value={destinationInput}
-                  onChange={handleDestinationInputChange}
-                  onFocus={() => destinationInput.length >= 2 && setShowDestinationSuggestions(true)}
-                  placeholder="City or IATA code (e.g., LHR, London)"
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm"
-                />
-                {showDestinationSuggestions && destinationSuggestions.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-                    {destinationSuggestions.map((airport) => (
-                      <div
-                        key={airport.iataCode}
-                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                        onClick={() => handleSelectDestination(airport)}
-                      >
-                        <div className="font-medium text-sm">{airport.iataCode}</div>
-                        <div className="text-xs text-gray-500">
-                          {airport.name}
-                          {airport.cityName && `, ${airport.cityName}`}
-                          {airport.countryName && `, ${airport.countryName}`}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Departure Date */}
-              <div>
-                <label htmlFor="departureDate" className="block text-sm font-medium text-gray-700 mb-1">Departure</label>
-                <input
-                  type="date"
-                  id="departureDate"
-                  className="w-full rounded-lg border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500"
-                  required
-                  value={departureDate}
-                  onChange={(e) => setDepartureDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                />
-              </div>
-
-              {/* Return Date - Conditionally Rendered */}
-              {tripType === 'round-trip' && (
-                <div>
-                  <label htmlFor="returnDate" className="block text-sm font-medium text-gray-700 mb-1">Return</label>
-                  <input
-                    type="date"
-                    id="returnDate"
-                    className="w-full rounded-lg border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500"
-                    required={tripType === 'round-trip'}
-                    value={returnDate}
-                    onChange={(e) => setReturnDate(e.target.value)}
-                    min={departureDate || new Date().toISOString().split('T')[0]}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Search Button */}
-            <div className="flex items-end">
-              <button
-                type="submit"
-                disabled={isSearching || isLoadingAirports}
-                className={`w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${
-                  isSearching || isLoadingAirports ? 'bg-cyan-400' : 'bg-cyan-600 hover:bg-cyan-500'
-                } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500`}
-              >
-                {isSearching ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Searching...
-                  </span>
-                ) : (
-                  <span className="flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                      <path d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" />
-                    </svg>
-                    Search Flights
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {error && (
-              <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-          </form>
-          
-          {/* Search results */}
-          <div className="mt-8">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-medium text-gray-900">
-                Search Results {flights.length > 0 && `(${flights.length} found)`}
-              </h2>
-              {hasSearched && (
-                <LiveStatusIndicator
-                  isRefreshing={isRefreshing}
-                  lastUpdated={lastUpdated}
-                  intervalMs={5000}
-                />
-              )}
-            </div>
-            
-            {error && (
-              <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm text-red-700">{error}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {isSearching ? (
-              <div className="flex items-center justify-center p-8">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
-              </div>
-            ) : flights.length > 0 ? (
-              <div className="space-y-4">
-                {flights.map((flight, index) => (
-                  <div key={index} className="border rounded-lg overflow-hidden">
-                    <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
-                      <div>
-                        <span className="font-medium">
-                          {flight.itineraries[0].segments[0].departure.iataCode} → 
-                          {flight.itineraries[0].segments[flight.itineraries[0].segments.length - 1].arrival.iataCode}
-                        </span>
-                        <span className="ml-2 text-sm text-gray-500">
-                          {flight.itineraries[0].segments.length - 1} stop{flight.itineraries[0].segments.length > 2 ? 's' : ''}
-                        </span>
-                      </div>
-                      <div className="text-lg font-bold">
-                        ${parseFloat(flight.price.total).toFixed(2)}
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium">
-                            {formatDate(flight.itineraries[0].segments[0].departure.at)}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {flight.itineraries[0].segments[0].departure.iataCode}
-                          </div>
-                        </div>
-                        <div className="text-center px-4">
-                          <div className="text-sm text-gray-500">
-                            {formatDuration(
-                              flight.itineraries[0].segments[0].departure.at,
-                              flight.itineraries[0].segments[flight.itineraries[0].segments.length - 1].arrival.at
-                            )}
-                          </div>
-                          <div className="border-t border-gray-200 w-16 my-1"></div>
-                          <div className="text-xs text-gray-500">
-                            {flight.itineraries[0].segments.length === 1 ? 'Nonstop' : `${flight.itineraries[0].segments.length - 1} stop${flight.itineraries[0].segments.length > 2 ? 's' : ''}`}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-medium">
-                            {formatDate(flight.itineraries[0].segments[flight.itineraries[0].segments.length - 1].arrival.at)}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {flight.itineraries[0].segments[flight.itineraries[0].segments.length - 1].arrival.iataCode}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-4 pt-4 border-t border-gray-100">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-1">
-                            <div className="text-sm font-medium text-gray-700">
-                              {getAirlineName(flight.itineraries[0].segments[0].carrierCode)}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              Flight {flight.itineraries[0].segments[0].carrierCode}{flight.itineraries[0].segments[0].number} •
-                              {flight.travelerPricings[0].fareDetailsBySegment[0].cabin.charAt(0).toUpperCase() +
-                               flight.travelerPricings[0].fareDetailsBySegment[0].cabin.slice(1).toLowerCase()} •
-                              {flight.itineraries[0].segments[0].aircraft.code}
-                            </div>
-                          </div>
-                          <a
-                            href={getBookingLink(flight)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500"
-                          >
-                            Book Flight
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" viewBox="0 0 20 20" fill="currentColor">
-                              <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-                              <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
-                            </svg>
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="bg-gray-50 p-8 rounded-md text-center">
-                <svg
-                  className="mx-auto h-12 w-12 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
-                  />
-                </svg>
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No flights found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {origin || destination || departureDate 
-                    ? 'Try adjusting your search criteria.'
-                    : 'Enter your search criteria to find flights.'}
-                </p>
-              </div>
-            )}
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end">
+          <AirportField
+            id="origin"
+            label="From"
+            placeholder="JFK, NYC…"
+            containerRef={originRef}
+            value={originInput}
+            onChange={handleOriginInputChange}
+            onFocus={() => originInput.length >= 2 && setShowOriginSuggestions(true)}
+            suggestions={showOriginSuggestions ? originSuggestions : []}
+            onSelect={handleSelectOrigin}
+          />
+          <AirportField
+            id="destination"
+            label="To"
+            placeholder="DTW, Detroit…"
+            containerRef={destinationRef}
+            value={destinationInput}
+            onChange={handleDestinationInputChange}
+            onFocus={() => destinationInput.length >= 2 && setShowDestinationSuggestions(true)}
+            suggestions={showDestinationSuggestions ? destinationSuggestions : []}
+            onSelect={handleSelectDestination}
+          />
+          <div>
+            <label htmlFor="departureDate" className="field-label">Departure</label>
+            <input
+              type="date"
+              id="departureDate"
+              className="input"
+              required
+              value={departureDate}
+              onChange={(e) => setDepartureDate(e.target.value)}
+              min={today}
+            />
           </div>
+          <div>
+            <label htmlFor="returnDate" className="field-label">Return</label>
+            <input
+              type="date"
+              id="returnDate"
+              className="input"
+              disabled={tripType !== 'round-trip'}
+              required={tripType === 'round-trip'}
+              value={tripType === 'round-trip' ? returnDate : ''}
+              onChange={(e) => setReturnDate(e.target.value)}
+              min={departureDate || today}
+            />
+          </div>
+          <button type="submit" disabled={isSearching || isLoadingAirports} className="btn-primary h-[38px] sm:col-span-2 lg:col-span-1">
+            {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            {isSearching ? 'Searching…' : 'Search'}
+          </button>
+        </div>
+
+        {error && <p className="alert-error mt-4">{error}</p>}
+      </form>
+
+      <section className="mt-8" aria-labelledby="results-heading">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <h2 id="results-heading" className="whitespace-nowrap text-sm font-medium text-slate-300">
+            {flights.length > 0 ? `${flights.length} offers` : 'Results'}
+          </h2>
+          {hasSearched && <LiveStatusIndicator isRefreshing={isRefreshing} lastUpdated={lastUpdated} intervalMs={5000} />}
+        </div>
+
+        {isSearching ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="panel h-28 animate-pulse" />
+            ))}
+          </div>
+        ) : flights.length > 0 ? (
+          <ul className="space-y-3">
+            {flights.map((flight, index) => (
+              <FlightCard
+                key={flight.id ?? index}
+                flight={flight}
+                airline={getAirlineName(flight.itineraries[0].segments[0].carrierCode)}
+                bookingLink={getBookingLink(flight)}
+                formatDate={formatDate}
+                formatDuration={formatDuration}
+              />
+            ))}
+          </ul>
+        ) : (
+          <div className="panel flex flex-col items-center px-6 py-12 text-center">
+            <Plane className="h-8 w-8 text-slate-600" aria-hidden />
+            <p className="mt-3 text-sm font-medium text-slate-300">{hasSearched ? 'No flights found' : 'No search yet'}</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {hasSearched ? 'Try other dates or nearby airports.' : 'Pick a route and date, then search.'}
+            </p>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function FlightCard({
+  flight,
+  airline,
+  bookingLink,
+  formatDate,
+  formatDuration,
+}: {
+  flight: Flight;
+  airline: string;
+  bookingLink: string;
+  formatDate: (d: string) => string;
+  formatDuration: (a: string, b: string) => string;
+}) {
+  const segments = flight.itineraries[0].segments;
+  const first = segments[0];
+  const last = segments[segments.length - 1];
+  const stops = segments.length - 1;
+  const cabin = flight.travelerPricings?.[0]?.fareDetailsBySegment?.[0]?.cabin ?? '';
+
+  return (
+    <li className="panel group flex flex-col gap-4 p-4 transition hover:border-cyan-400/30 sm:flex-row sm:items-center sm:p-5">
+      <div className="flex min-w-0 flex-1 items-center gap-4 sm:gap-6">
+        <div className="text-left">
+          <p className="font-mono text-lg font-semibold text-white">{first.departure.iataCode}</p>
+          <p className="text-xs text-slate-500">{formatDate(first.departure.at)}</p>
+        </div>
+        <div className="flex flex-1 flex-col items-center text-xs text-slate-500">
+          <span>{formatDuration(first.departure.at, last.arrival.at)}</span>
+          <span className="my-1 h-px w-full bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          <span className={stops === 0 ? 'text-emerald-400' : ''}>
+            {stops === 0 ? 'Nonstop' : `${stops} stop${stops > 1 ? 's' : ''} · ${segments.slice(0, -1).map((s) => s.arrival.iataCode).join(', ')}`}
+          </span>
+        </div>
+        <div className="text-right">
+          <p className="font-mono text-lg font-semibold text-white">{last.arrival.iataCode}</p>
+          <p className="text-xs text-slate-500">{formatDate(last.arrival.at)}</p>
         </div>
       </div>
-    </div>
+
+      <div className="flex items-center justify-between gap-4 border-t border-white/5 pt-3 sm:w-64 sm:flex-col sm:items-end sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
+        <div className="sm:text-right">
+          <p className="text-xl font-semibold text-white">${parseFloat(flight.price.total).toFixed(0)}</p>
+          <p className="text-xs text-slate-500">
+            {airline} · {first.carrierCode}
+            {first.number}
+            {cabin && ` · ${cabin.charAt(0)}${cabin.slice(1).toLowerCase()}`}
+          </p>
+        </div>
+        <a href={bookingLink} target="_blank" rel="noopener noreferrer" className="btn-ghost">
+          View fare <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+      </div>
+    </li>
   );
 }
