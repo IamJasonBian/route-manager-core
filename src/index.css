@@ -77,9 +77,54 @@
   }
 }
 
-/* Light panels for forms (search / trends) — paper on dark sky */
+/* Shared dark-shell primitives — one surface system for every page */
 @layer components {
-  .surface-paper {
-    @apply rounded-2xl border border-white/10 bg-white/95 text-slate-900 shadow-xl shadow-slate-950/40 backdrop-blur-sm;
+  .panel {
+    @apply rounded-2xl border border-white/10 bg-slate-900/50 shadow-xl shadow-slate-950/30 backdrop-blur-sm;
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-xs font-medium text-slate-400;
+  }
+
+  .input {
+    @apply block w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-white placeholder:text-slate-600 transition focus:border-cyan-400/60 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 disabled:opacity-50;
+    color-scheme: dark;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30;
+  }
+
+  .segmented {
+    @apply inline-flex rounded-lg border border-white/10 bg-slate-950/60 p-0.5;
+  }
+
+  .segmented > button {
+    @apply rounded-md px-3.5 py-1.5 text-sm font-medium text-slate-400 transition hover:text-white;
+  }
+
+  .segmented > button[aria-pressed='true'] {
+    @apply bg-white/10 text-white shadow-inner shadow-white/5;
+  }
+
+  .menu {
+    @apply absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-white/10 bg-slate-900 py-1 shadow-2xl shadow-slate-950/60;
+  }
+
+  .menu-item {
+    @apply cursor-pointer px-3 py-2 hover:bg-white/5;
+  }
+
+  .alert-error {
+    @apply rounded-lg border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-300;
   }
 }
