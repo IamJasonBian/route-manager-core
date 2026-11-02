@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ExternalLink, Loader2, Plane, Search } from 'lucide-react';
+import { ExternalLink, Loader2, Plane, RefreshCw, Search } from 'lucide-react';
 import axios from 'axios';
 import { useLivePolling } from '../hooks/useLivePolling';
 import LiveStatusIndicator from '../components/LiveStatusIndicator';
 import PageHeader from '../components/ui/PageHeader';
 import AirportField, { type Airport } from '../components/ui/AirportField';
+
+const SEARCH_POLL_MS = 60_000;
 
 interface Flight {
   id: string;
@@ -299,15 +301,16 @@ export default function SearchFlightsPage() {
     markUpdated();
   };
 
+  // Each tick hits Kiwi, so keep it slow; the Refresh button covers "now".
   const pollFetcher = useCallback(async () => {
     if (isSearching) return;
     if (!lastSearchParamsRef.current) return;
     await fetchFlights(lastSearchParamsRef.current, { silent: true });
   }, [isSearching]);
 
-  const { isRefreshing, lastUpdated, markUpdated } = useLivePolling({
+  const { isRefreshing, lastUpdated, markUpdated, refresh } = useLivePolling({
     enabled: hasSearched,
-    intervalMs: 5000,
+    intervalMs: SEARCH_POLL_MS,
     fetcher: pollFetcher,
   });
 
@@ -389,7 +392,21 @@ export default function SearchFlightsPage() {
           <h2 id="results-heading" className="whitespace-nowrap text-sm font-medium text-slate-300">
             {flights.length > 0 ? `${flights.length} offers` : 'Results'}
           </h2>
-          {hasSearched && <LiveStatusIndicator isRefreshing={isRefreshing} lastUpdated={lastUpdated} intervalMs={5000} />}
+          {hasSearched && (
+            <div className="flex items-center gap-3">
+              <LiveStatusIndicator isRefreshing={isRefreshing} lastUpdated={lastUpdated} intervalMs={SEARCH_POLL_MS} />
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                disabled={isRefreshing || isSearching}
+                className="btn-ghost"
+                aria-label="Refresh results"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+          )}
         </div>
 
         {isSearching ? (

@@ -262,12 +262,13 @@ const PriceHistoryChart: React.FC<PriceHistoryChartProps> = ({
       }
     };
 
-    // Return the final options with proper typing
+    // Chart.js scale types are a union keyed by `type`; cast to the line-chart scale map.
+    type LineScale = NonNullable<ChartOptions<'line'>['scales']>[string];
     return {
       ...baseOptions,
       scales: {
-        x: timeScale as any, // Type assertion needed due to Chart.js type definitions
-        y: yAxis as any
+        x: timeScale as LineScale,
+        y: yAxis as LineScale
       }
     };
   }, [chartType, title]);
