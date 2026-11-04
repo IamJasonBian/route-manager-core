@@ -5,10 +5,12 @@ import {
   CalendarRange,
   Compass,
   Gauge,
+  Snowflake,
   Sparkles,
   TrendingDown,
 } from 'lucide-react';
-import { getFlightPrices, type FlightPrice } from '../services/api';
+import { getFlightPrices, type FlightPrice, type SkiTripsResponse } from '../services/api';
+import { SkiTripsPanel } from '../components/planning/SkiTripsPanel';
 
 const SEGMENTS = [
   { id: 'out', label: 'Outbound', from: 'JFK', to: 'LAX', stops: 'Nonstop' },
@@ -28,6 +30,14 @@ export default function PlanningPage() {
   const [prices, setPrices] = useState<FlightPrice[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [ms, setMs] = useState<number | null>(null);
+  const [skiMeta, setSkiMeta] = useState<Pick<SkiTripsResponse, 'weekend' | 'seasonTarget' | 'origin'> | null>(
+    null
+  );
+
+  const handleSkiLoaded = useCallback(
+    (meta: Pick<SkiTripsResponse, 'weekend' | 'seasonTarget' | 'origin'>) => setSkiMeta(meta),
+    []
+  );
 
   const origin = 'JFK';
   const dest = 'LAX';
@@ -231,6 +241,25 @@ export default function PlanningPage() {
             </div>
           </section>
         </div>
+
+        {/* Weekend ski trips */}
+        <section aria-labelledby="ski-trips-heading" className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2
+                id="ski-trips-heading"
+                className="text-xl font-semibold text-[hsl(var(--foreground))] flex items-center gap-2"
+              >
+                <Snowflake className="h-5 w-5 text-[hsl(var(--primary))]" aria-hidden />
+                Weekend ski trips · Epic Pass · East Coast
+              </h2>
+              {skiMeta?.weekend?.label && (
+                <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">{skiMeta.weekend.label}</p>
+              )}
+            </div>
+          </div>
+          <SkiTripsPanel onLoaded={handleSkiLoaded} />
+        </section>
       </div>
     </div>
   );

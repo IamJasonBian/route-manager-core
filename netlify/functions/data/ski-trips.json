@@ -1,0 +1,281 @@
+{
+  "generatedAt": "2026-04-23",
+  "seasonTarget": "2026-2027",
+  "weekend": { "depart": "2027-01-15", "return": "2027-01-17", "label": "Fri 2027-01-15 → Sun 2027-01-17" },
+  "priceBasis": "Synthesized from typical public ranges: OvR Ski Bus published rates; Delta JFK-BTV and NYC-MHT historical fares. Routes audited by internal BI validation (JFK-BTV carrier corrected to Delta; Okemo/RUT dropped for Sunapee/MHT due to minimal commercial service at RUT).",
+  "origin": { "city": "New York City", "hubs": ["JFK", "LGA", "Port Authority"] },
+  "trips": [
+    {
+      "id": "trip-hunter",
+      "resort": "Hunter Mountain",
+      "state": "NY",
+      "epicPass": true,
+      "heroAccent": "emerald",
+      "mountainStats": { "verticalFt": 1600, "trails": 67, "lifts": 13 },
+      "transport": {
+        "mode": "bus",
+        "outbound": {
+          "operator": "OvR Ski Bus",
+          "from": { "code": "NYC", "name": "Union Square (857 Broadway)" },
+          "to": { "code": "HUN", "name": "Hunter Mountain Base Lodge" },
+          "depart": "2027-01-15T18:00",
+          "arrive": "2027-01-15T21:30",
+          "durationMin": 210,
+          "priceUsd": 115
+        },
+        "returnOptions": [
+          {
+            "id": "hunter-ret-early",
+            "label": "Early coach",
+            "operator": "OvR Ski Bus",
+            "from": { "code": "HUN", "name": "Hunter Mountain Base Lodge" },
+            "to": { "code": "NYC", "name": "Union Square (857 Broadway)" },
+            "depart": "2027-01-17T15:30",
+            "arrive": "2027-01-17T18:45",
+            "durationMin": 195,
+            "priceUsd": 115,
+            "recommended": false,
+            "note": "Misses last chair; best for beating Sunday traffic"
+          },
+          {
+            "id": "hunter-ret-standard",
+            "label": "Standard return",
+            "operator": "OvR Ski Bus",
+            "from": { "code": "HUN", "name": "Hunter Mountain Base Lodge" },
+            "to": { "code": "NYC", "name": "Union Square (857 Broadway)" },
+            "depart": "2027-01-17T17:00",
+            "arrive": "2027-01-17T20:15",
+            "durationMin": 195,
+            "priceUsd": 115,
+            "recommended": true,
+            "note": "Full ski day; arrives NYC before 21:00"
+          },
+          {
+            "id": "hunter-ret-late",
+            "label": "Après-ski",
+            "operator": "OvR Ski Bus",
+            "from": { "code": "HUN", "name": "Hunter Mountain Base Lodge" },
+            "to": { "code": "NYC", "name": "Union Square (857 Broadway)" },
+            "depart": "2027-01-17T18:30",
+            "arrive": "2027-01-17T21:55",
+            "durationMin": 205,
+            "priceUsd": 125,
+            "recommended": false,
+            "note": "Lodge drinks + late boarding surcharge"
+          }
+        ],
+        "groundTransferMin": 0,
+        "groundTransferNote": "Direct door-to-lodge service; no transfer needed"
+      },
+      "totals": { "transportPriceUsdMin": 230, "transportPriceUsdMax": 240, "transitTimeMinOneWay": 210 },
+      "notes": "Cheapest and easiest NYC ski option. OvR sells a lift+bus bundle from ~$220.",
+      "sources": ["https://ovrride.com/destination/hunter-mt/"]
+    },
+    {
+      "id": "trip-mount-snow",
+      "resort": "Mount Snow",
+      "state": "VT",
+      "epicPass": true,
+      "heroAccent": "sky",
+      "mountainStats": { "verticalFt": 1700, "trails": 86, "lifts": 20 },
+      "transport": {
+        "mode": "bus",
+        "outbound": {
+          "operator": "OvR Ski Bus",
+          "from": { "code": "NYC", "name": "Upper West Side (2101 Broadway)" },
+          "to": { "code": "MTS", "name": "Mount Snow Main Base Lodge" },
+          "depart": "2027-01-15T19:30",
+          "arrive": "2027-01-16T00:15",
+          "durationMin": 285,
+          "priceUsd": 155
+        },
+        "returnOptions": [
+          {
+            "id": "mtsnow-ret-standard",
+            "label": "Standard Sunday coach",
+            "operator": "OvR Ski Bus",
+            "from": { "code": "MTS", "name": "Mount Snow Main Base Lodge" },
+            "to": { "code": "NYC", "name": "Upper West Side (2101 Broadway)" },
+            "depart": "2027-01-17T16:30",
+            "arrive": "2027-01-17T21:00",
+            "durationMin": 270,
+            "priceUsd": 155,
+            "recommended": true,
+            "note": "Default Sunday departure"
+          },
+          {
+            "id": "mtsnow-ret-monday",
+            "label": "Monday early coach",
+            "operator": "OvR Ski Bus",
+            "from": { "code": "MTS", "name": "Mount Snow Main Base Lodge" },
+            "to": { "code": "NYC", "name": "Upper West Side (2101 Broadway)" },
+            "depart": "2027-01-18T06:30",
+            "arrive": "2027-01-18T11:00",
+            "durationMin": 270,
+            "priceUsd": 145,
+            "recommended": false,
+            "note": "Requires Sunday night lodge stay; light Monday work-from-bus"
+          },
+          {
+            "id": "mtsnow-ret-greyhound",
+            "label": "Greyhound via Albany",
+            "operator": "Greyhound",
+            "from": { "code": "ALB", "name": "Albany Bus Terminal" },
+            "to": { "code": "PABT", "name": "Port Authority Bus Terminal" },
+            "depart": "2027-01-17T18:15",
+            "arrive": "2027-01-17T22:05",
+            "durationMin": 230,
+            "priceUsd": 62,
+            "recommended": false,
+            "note": "Requires own ~1h drive to ALB; cheapest fallback"
+          }
+        ],
+        "groundTransferMin": 0,
+        "groundTransferNote": "Direct coach to base lodge (OvR options)"
+      },
+      "totals": { "transportPriceUsdMin": 217, "transportPriceUsdMax": 310, "transitTimeMinOneWay": 285 },
+      "notes": "Southern VT via West Dover. OvR also sells lift+bus bundles ~$285.",
+      "sources": ["https://ovrride.com/destination/mount-snow/"]
+    },
+    {
+      "id": "trip-stowe",
+      "resort": "Stowe Mountain Resort",
+      "state": "VT",
+      "epicPass": true,
+      "heroAccent": "indigo",
+      "mountainStats": { "verticalFt": 2360, "trails": 116, "lifts": 13 },
+      "transport": {
+        "mode": "flight",
+        "outbound": {
+          "operator": "Delta",
+          "number": "DL 4821",
+          "from": { "code": "JFK", "name": "John F. Kennedy Intl" },
+          "to": { "code": "BTV", "name": "Burlington Intl" },
+          "depart": "2027-01-15T17:25",
+          "arrive": "2027-01-15T19:00",
+          "durationMin": 95,
+          "priceUsd": 219
+        },
+        "returnOptions": [
+          {
+            "id": "stowe-ret-dl4824",
+            "label": "Delta evening nonstop",
+            "operator": "Delta",
+            "number": "DL 4824",
+            "from": { "code": "BTV", "name": "Burlington Intl" },
+            "to": { "code": "JFK", "name": "John F. Kennedy Intl" },
+            "depart": "2027-01-17T19:40",
+            "arrive": "2027-01-17T21:10",
+            "durationMin": 90,
+            "priceUsd": 198,
+            "recommended": true,
+            "note": "Only nonstop BTV→JFK on Sundays"
+          },
+          {
+            "id": "stowe-ret-b6-lga",
+            "label": "JetBlue via BOS (1 stop)",
+            "operator": "JetBlue",
+            "number": "B6 1842 + B6 1107",
+            "from": { "code": "BTV", "name": "Burlington Intl" },
+            "to": { "code": "LGA", "name": "LaGuardia" },
+            "depart": "2027-01-17T17:05",
+            "arrive": "2027-01-17T21:35",
+            "durationMin": 270,
+            "priceUsd": 174,
+            "recommended": false,
+            "note": "55-min BOS connection; cheaper but longer"
+          },
+          {
+            "id": "stowe-ret-monday-am",
+            "label": "Delta Monday morning",
+            "operator": "Delta",
+            "number": "DL 4820",
+            "from": { "code": "BTV", "name": "Burlington Intl" },
+            "to": { "code": "JFK", "name": "John F. Kennedy Intl" },
+            "depart": "2027-01-18T06:35",
+            "arrive": "2027-01-18T08:05",
+            "durationMin": 90,
+            "priceUsd": 224,
+            "recommended": false,
+            "note": "Stretch to 3 ski days; adds 1 lodge night"
+          }
+        ],
+        "groundTransferMin": 45,
+        "groundTransferNote": "Rental car or Peak Shuttle from BTV, ~37 mi to Stowe village"
+      },
+      "totals": { "transportPriceUsdMin": 393, "transportPriceUsdMax": 443, "transitTimeMinOneWay": 140 },
+      "notes": "Marquee northern VT resort. BTV nonstops are limited — book 4+ weeks out.",
+      "sources": ["https://gostowe.com/plan-your-visit/travel-information", "https://www.flightsfrom.com/JFK-BTV"]
+    },
+    {
+      "id": "trip-sunapee",
+      "resort": "Mount Sunapee",
+      "state": "NH",
+      "epicPass": true,
+      "heroAccent": "rose",
+      "mountainStats": { "verticalFt": 1510, "trails": 67, "lifts": 10 },
+      "transport": {
+        "mode": "flight",
+        "outbound": {
+          "operator": "American Eagle",
+          "number": "AA 4412",
+          "from": { "code": "LGA", "name": "LaGuardia" },
+          "to": { "code": "MHT", "name": "Manchester-Boston Regional" },
+          "depart": "2027-01-15T16:45",
+          "arrive": "2027-01-15T18:15",
+          "durationMin": 90,
+          "priceUsd": 189
+        },
+        "returnOptions": [
+          {
+            "id": "sunapee-ret-aa4415",
+            "label": "American evening nonstop",
+            "operator": "American Eagle",
+            "number": "AA 4415",
+            "from": { "code": "MHT", "name": "Manchester-Boston Regional" },
+            "to": { "code": "LGA", "name": "LaGuardia" },
+            "depart": "2027-01-17T19:20",
+            "arrive": "2027-01-17T20:50",
+            "durationMin": 90,
+            "priceUsd": 176,
+            "recommended": true,
+            "note": "Default Sunday return; LGA arrival"
+          },
+          {
+            "id": "sunapee-ret-jb-jfk",
+            "label": "JetBlue to JFK",
+            "operator": "JetBlue",
+            "number": "B6 2211",
+            "from": { "code": "MHT", "name": "Manchester-Boston Regional" },
+            "to": { "code": "JFK", "name": "John F. Kennedy Intl" },
+            "depart": "2027-01-17T18:10",
+            "arrive": "2027-01-17T19:40",
+            "durationMin": 90,
+            "priceUsd": 198,
+            "recommended": false,
+            "note": "Earlier departure, JFK arrival; shorter connection if continuing"
+          },
+          {
+            "id": "sunapee-ret-bos-drive",
+            "label": "Drive BOS + JetBlue",
+            "operator": "JetBlue",
+            "number": "B6 415",
+            "from": { "code": "BOS", "name": "Boston Logan" },
+            "to": { "code": "JFK", "name": "John F. Kennedy Intl" },
+            "depart": "2027-01-17T20:00",
+            "arrive": "2027-01-17T21:30",
+            "durationMin": 90,
+            "priceUsd": 139,
+            "recommended": false,
+            "note": "Drop rental at BOS (~1h45 from resort); cheapest, later arrival"
+          }
+        ],
+        "groundTransferMin": 65,
+        "groundTransferNote": "Rental car from MHT, ~58 mi to Mount Sunapee base"
+      },
+      "totals": { "transportPriceUsdMin": 328, "transportPriceUsdMax": 387, "transitTimeMinOneWay": 155 },
+      "notes": "NH pick with short MHT hop. MHT has more reliable NYC service than BTV.",
+      "sources": ["https://www.travelmath.com/driving-time/from/MHT/to/Mount+Sunapee,+NH"]
+    }
+  ]
+}

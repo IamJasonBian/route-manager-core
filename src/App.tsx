@@ -5,6 +5,7 @@ import { Loader2, Plane } from 'lucide-react';
 import HomePage from './pages/HomePage';
 import SearchFlightsPage from './pages/SearchFlightsPage';
 import PriceTrendsPage from './pages/PriceTrendsPage';
+import PipelinesPage from './pages/PipelinesPage';
 
 const PlanningPage = lazy(() => import('./pages/PlanningPage'));
 
@@ -14,7 +15,7 @@ function prefetchPlanningChunk() {
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'rounded-full px-3.5 py-2 text-sm font-medium transition-colors duration-200',
+    'shrink-0 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium transition-colors duration-200',
     isActive
       ? 'bg-white/10 text-white shadow-inner shadow-white/5'
       : 'text-slate-400 hover:bg-white/5 hover:text-white',
@@ -65,11 +66,14 @@ function AppContent() {
             <NavLink to="/trends" className={navLinkClass}>
               Trends
             </NavLink>
+            <NavLink to="/pipelines" className={navLinkClass}>
+              Pipelines
+            </NavLink>
           </nav>
         </div>
 
         <div className="border-t border-white/5 px-4 py-2 md:hidden">
-          <nav className="flex flex-wrap justify-center gap-1" aria-label="Primary mobile">
+          <nav className="-mx-4 flex gap-1 overflow-x-auto px-4 [scrollbar-width:none]" aria-label="Primary mobile">
             <NavLink to="/" className={navLinkClass} end>
               Home
             </NavLink>
@@ -81,6 +85,9 @@ function AppContent() {
             </NavLink>
             <NavLink to="/trends" className={navLinkClass}>
               Trends
+            </NavLink>
+            <NavLink to="/pipelines" className={navLinkClass}>
+              Pipelines
             </NavLink>
           </nav>
         </div>
@@ -98,6 +105,7 @@ function AppContent() {
           />
           <Route path="/search" element={<SearchFlightsPage />} />
           <Route path="/trends" element={<PriceTrendsPage />} />
+          <Route path="/pipelines" element={<PipelinesPage />} />
           <Route
             path="/plan"
             element={

@@ -99,8 +99,7 @@ monterrey/
 
 ### Deployment
 - **Environments**: Alpha (development), Gamma (staging), and Prod (protected)
-- **CI/CD**: GitHub Actions with config-driven environment selection
-- **Configuration**: Edit `deployment-config.json` to change target environment
+- **CI/CD**: GitHub Actions with **tag-gated** environment selection (see "Releases" below)
 - **CDK**: Optional AWS CDK infrastructure in `/cdk` directory
 - **Secrets**: `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID_GAMMA`, `NETLIFY_SITE_ID_PROD`
 - **Alpha Site ID**: `b26b3133-30c1-46f3-b976-59ab7c928b57` (hardcoded)
@@ -124,12 +123,36 @@ Project backlog: https://github.com/users/IamJasonBian/projects/1
 | Gamma | https://route-manager-gamma.netlify.app/ | (GitHub secret) |
 | Prod | https://route-manager-prod.netlify.app/ | (GitHub secret) |
 
-## Changing Deployment Target
+## Releases
 
-To deploy to a different environment:
-1. Edit `deployment-config.json` in the root directory
-2. Change `targetEnvironment` to `"alpha"`, `"gamma"`, or `"prod"`
-3. Submit a PR with the change
-4. Once merged, the workflow will deploy to the specified environment
+Deploys are gated by git ref shape — no config file edits required.
 
-Alternatively, use the manual workflow dispatch in GitHub Actions to deploy to any environment on-demand.
+| Ref pushed                  | Deploys to | Example                     |
+|-----------------------------|------------|-----------------------------|
+| `main` (no tag)             | alpha      | every merge                 |
+| Tag `vX.Y.Z-<suffix>`       | gamma      | `v1.2.0-rc.0`               |
+| Tag `vX.Y.Z` (clean semver) | prod       | `v1.2.0` (also cuts a GitHub Release) |
+
+### Cutting a release
+
+```bash
+make release-rc       # 1.0.0 → 1.0.1-rc.0  → tag v1.0.1-rc.0  → gamma
+make release-patch    # 1.0.0 → 1.0.1       → tag v1.0.1       → prod
+make release-minor    # 1.0.0 → 1.1.0       → tag v1.1.0       → prod
+make release-major    # 1.0.0 → 2.0.0       → tag v2.0.0       → prod
+```
+
+Each target bumps `package.json`, creates a `release: vX.Y.Z` commit, tags it,
+and runs `git push --follow-tags`. Working tree must be clean — the target
+aborts otherwise so a release never silently includes WIP.
+
+### Breakglass
+
+When you need to deploy a specific commit to a specific env outside the tag flow
+(hotfix from a branch, redeploy of an old SHA, etc.):
+
+1. GitHub → Actions → "Deploy to Netlify" → **Run workflow**
+2. Pick the branch/tag and target environment
+3. Run
+
+This bypasses the ref-shape gating but still runs the full build + deploy.

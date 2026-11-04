@@ -1,5 +1,11 @@
 name: Deploy to Netlify
 
+# Tag-gated release flow:
+#   - push to main          → alpha   (continuous dev environment)
+#   - tag v*.*.*-<anything> → gamma   (release candidate, e.g. v1.2.3-rc.0)
+#   - tag v*.*.*            → prod    (clean semver, e.g. v1.2.3)
+#   - workflow_dispatch     → any env (breakglass override)
+
 permissions:
   contents: read
   deployments: write
@@ -9,12 +15,13 @@ permissions:
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
     inputs:
       target_environment:
-        description: 'Target environment for deployment'
+        description: 'Breakglass: deploy current ref to this environment'
         required: true
         default: 'alpha'
         type: choice
@@ -28,32 +35,51 @@ env:
   NETLIFY_SITE_ID_ALPHA: 'b26b3133-30c1-46f3-b976-59ab7c928b57'
 
 jobs:
-  # Determine target environment from config file or workflow input
+  # Decide target env from ref shape (tag vs branch) or workflow_dispatch input.
   determine-environment:
     runs-on: ubuntu-latest
     outputs:
       target_env: ${{ steps.set-env.outputs.target_env }}
+      release_version: ${{ steps.set-env.outputs.release_version }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Determine target environment
         id: set-env
         run: |
-          # If manually triggered, use the input
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "target_env=${{ github.event.inputs.target_environment }}" >> $GITHUB_OUTPUT
-            echo "Using workflow input: ${{ github.event.inputs.target_environment }}"
-          else
-            # Read from deployment-config.json, default to alpha
-            if [ -f deployment-config.json ]; then
-              TARGET=$(jq -r '.targetEnvironment // "alpha"' deployment-config.json)
-              echo "target_env=$TARGET" >> $GITHUB_OUTPUT
-              echo "Using config file: $TARGET"
+          set -euo pipefail
+          REF="${GITHUB_REF}"
+          EVENT="${{ github.event_name }}"
+
+          # Breakglass: workflow_dispatch input wins over everything.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            TARGET="${{ github.event.inputs.target_environment }}"
+            VERSION="manual-${GITHUB_SHA::7}"
+            echo "Breakglass dispatch → $TARGET"
+          elif [[ "$REF" == refs/tags/v*.*.* ]]; then
+            TAG="${REF#refs/tags/}"
+            VERSION="$TAG"
+            # Prerelease tags (have a hyphen after the version) → gamma.
+            # Clean semver tags → prod.
+            if [[ "$TAG" == *-* ]]; then
+              TARGET="gamma"
+              echo "Prerelease tag $TAG → gamma"
             else
-              echo "target_env=alpha" >> $GITHUB_OUTPUT
-              echo "No config file found, using default: alpha"
+              TARGET="prod"
+              echo "Release tag $TAG → prod"
             fi
+          elif [[ "$REF" == refs/heads/main || "$REF" == refs/heads/master ]]; then
+            TARGET="alpha"
+            VERSION="main-${GITHUB_SHA::7}"
+            echo "Push to $REF → alpha"
+          else
+            echo "No deploy target for ref $REF on event $EVENT — skipping."
+            TARGET="none"
+            VERSION="none"
           fi
+
+          echo "target_env=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "release_version=$VERSION" >> "$GITHUB_OUTPUT"
 
   deploy-alpha:
     runs-on: ubuntu-latest
@@ -82,8 +108,8 @@ jobs:
       - name: Install Netlify CLI
         run: npm install -g netlify-cli
 
-      - name: Deploy to Alpha
-        run: netlify deploy --dir=dist --prod --site ${{ env.NETLIFY_SITE_ID_ALPHA }}
+      - name: Deploy to Alpha (${{ needs.determine-environment.outputs.release_version }})
+        run: netlify deploy --dir=dist --prod --site ${{ env.NETLIFY_SITE_ID_ALPHA }} --message "alpha ${{ needs.determine-environment.outputs.release_version }}"
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
 
@@ -121,8 +147,8 @@ jobs:
       - name: Install Netlify CLI
         run: npm install -g netlify-cli
 
-      - name: Deploy to Gamma (staging)
-        run: netlify deploy --dir=dist --prod --site ${{ secrets.NETLIFY_SITE_ID_GAMMA }}
+      - name: Deploy to Gamma (${{ needs.determine-environment.outputs.release_version }})
+        run: netlify deploy --dir=dist --prod --site ${{ secrets.NETLIFY_SITE_ID_GAMMA }} --message "gamma ${{ needs.determine-environment.outputs.release_version }}"
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
 
@@ -156,10 +182,21 @@ jobs:
       - name: Install Netlify CLI
         run: npm install -g netlify-cli
 
-      - name: Deploy to Prod
-        run: netlify deploy --dir=dist --prod --site ${{ secrets.NETLIFY_SITE_ID_PROD }}
+      - name: Deploy to Prod (${{ needs.determine-environment.outputs.release_version }})
+        run: netlify deploy --dir=dist --prod --site ${{ secrets.NETLIFY_SITE_ID_PROD }} --message "prod ${{ needs.determine-environment.outputs.release_version }}"
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            --target "$GITHUB_SHA" || echo "Release may already exist (non-blocking)"
 
       - name: (Non-blocking) Test deployed functions
         run: |

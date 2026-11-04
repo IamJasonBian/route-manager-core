@@ -1,9 +1,14 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  /** When set (e.g. http://127.0.0.1:9999), forward /.netlify/functions to a local Netlify functions server. Plain `vite` does not run functions — use `netlify dev` (see netlify.toml port) or this proxy. */
+  const functionsProxy = env.VITE_FUNCTIONS_PROXY?.trim();
+
+  return {
   plugins: [react()],
   resolve: {
     alias: {
@@ -49,12 +54,22 @@ export default defineConfig({
     },
   },
   server: {
-    // Let Netlify Dev handle the proxy
-    port: 5173, // Explicitly set the Vite dev server port
-    strictPort: true, // Don't try to find another port if 5173 is in use
+    port: 5173,
+    strictPort: true,
+    ...(functionsProxy
+      ? {
+          proxy: {
+            '/.netlify/functions': {
+              target: functionsProxy,
+              changeOrigin: true,
+            },
+          },
+        }
+      : {}),
   },
   define: {
     'process.env.NODE_ENV': `"${process.env.NODE_ENV || 'development'}"`,
     global: 'globalThis',
   },
+};
 });

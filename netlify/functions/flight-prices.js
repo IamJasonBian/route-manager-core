@@ -163,9 +163,11 @@ export const handler = async (event, context) => {
     
     // Generate dates for the next 30 days
     const dates = generateDatesForNextMonth();
-    
-    // Get flight prices for all dates
-    const prices = await getFlightPricesForDates(amadeus, originCode, destinationCode, dates);
+
+    // Pull up to 5 offers per date so the trends chart can slice/overlay by carrier.
+    const prices = await getFlightPricesForDates(amadeus, originCode, destinationCode, dates, {
+      maxPerDate: 5,
+    });
     
     // If no prices found, return an error
     if (prices.length === 0) {
