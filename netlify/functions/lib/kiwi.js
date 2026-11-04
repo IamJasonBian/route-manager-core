@@ -63,6 +63,8 @@ export async function searchKiwi(params) {
     sort: params.sort || 'price',
     ...(params.returnDate && { returnDate: toKiwiDate(params.returnDate) }),
     ...(params.nonStop && { max_sector_stopovers: 0 }),
+    // maxStops wins over nonStop when both are set (0 = nonstop, 1 = ≤1 connection).
+    ...(params.maxStops != null && { max_sector_stopovers: Number(params.maxStops) }),
     ...(params.maxPrice && { price_to: Math.floor(Number(params.maxPrice)) }),
     ...(params.cabinClass && { cabinClass: params.cabinClass }),
   };
