@@ -57,17 +57,15 @@ else
     echo "✅ Netlify CLI is already installed."
 fi
 
-# Install Amadeus in functions directory
-echo "📦 Installing Amadeus in functions directory..."
-cd netlify/functions
-npm init -y
-npm install amadeus dotenv
-cd ../..
+# Install function dependencies
+echo "📦 Installing netlify/functions dependencies..."
+(cd netlify/functions && npm install)
 
 echo "✨ Setup complete!"
-echo "\nNext steps:"
-1. Update the .env file with your Amadeus API credentials
-2. Start the development server: npm run dev:clean
-3. Open http://localhost:3000 in your browser
+echo ""
+echo "Next steps:"
+echo "1. Update the .env file (DB settings; flight search needs no keys)"
+echo "2. Start the development server: npm run dev:clean"
+echo "3. Open http://localhost:3000 in your browser"
 
 echo "\nHappy coding! 🚀"

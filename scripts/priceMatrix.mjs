@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // One-off: fetch cheapest one-way price per (route, weekend date) for the next 4 weekends.
-// Hits the deployed Netlify function (no local Amadeus creds needed).
+// Hits the deployed Netlify function (no local credentials needed).
 
 const ENDPOINT = process.env.ENDPOINT
   || 'https://route-manager-prod.netlify.app/.netlify/functions/search-flights';

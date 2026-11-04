@@ -18,14 +18,7 @@
     VITE_API_URL = "/.netlify/functions"
     # Browser origin when using `make dev` / netlify dev (port from [dev] above)
     CORS_ORIGIN = "http://localhost:3000"
-    # Amadeus test/sandbox API — use test keys from https://developers.amadeus.com (override in .env if needed)
-    AMADEUS_HOSTNAME = "test"
-
-    # These will be loaded from .env file or system environment
-    AMADEUS_API_KEY = "${AMADEUS_API_KEY}"
-    AMADEUS_API_SECRET = "${AMADEUS_API_SECRET}"
-
-    # Set to "true" locally to exercise flight-prices without Amadeus (see .env.example)
+    # Set to "true" locally to exercise flight-prices without calling Kiwi (see .env.example)
     # USE_MOCK_DATA = "false"
     
     # Database configuration
@@ -39,9 +32,6 @@
   # Environment variables for Netlify Functions in production
   [functions.environment]
     NODE_ENV = "production"
-    AMADEUS_API_KEY = "${AMADEUS_API_KEY}"
-    AMADEUS_API_SECRET = "${AMADEUS_API_SECRET}"
-    AMADEUS_HOSTNAME = "production"
     
     # Database configuration (should be set in Netlify UI for production)
     DB_USER = "${DB_USER}"

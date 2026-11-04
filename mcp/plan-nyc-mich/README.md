@@ -19,10 +19,8 @@ one.
 ## Auth
 
 Credential-less. Proxies to the deployed Netlify function
-`netlify/functions/search-flights.js`, which reads `AMADEUS_API_KEY` /
-`AMADEUS_API_SECRET` / `AMADEUS_HOSTNAME` from its Netlify site environment
-(set per-environment in the Netlify UI; alpha/gamma/prod site IDs in
-`CLAUDE.md`).
+`netlify/functions/search-flights.js`, which searches Kiwi's public API (no
+credentials; alpha/gamma/prod site IDs in `CLAUDE.md`).
 
 Override the upstream with:
 

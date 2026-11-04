@@ -31,7 +31,7 @@ export const defaultRoutes: Omit<ApiRoute, 'id'>[] = [
     "meta": {
       "fromCode": "JFK",
       "toCode": "LHR",
-      "source": "amadeus",
+      "source": "snapshot",
       "lowestPrice": 189,
       "highestPrice": 375,
       "updatedAt": "2025-05-26T04:29:10.550Z"
@@ -64,7 +64,7 @@ export const defaultRoutes: Omit<ApiRoute, 'id'>[] = [
     "meta": {
       "fromCode": "JFK",
       "toCode": "SEA",
-      "source": "amadeus",
+      "source": "snapshot",
       "lowestPrice": 142.96,
       "highestPrice": 158.49,
       "updatedAt": "2025-05-26T04:29:30.540Z"
@@ -97,7 +97,7 @@ export const defaultRoutes: Omit<ApiRoute, 'id'>[] = [
     "meta": {
       "fromCode": "JFK",
       "toCode": "DTW",
-      "source": "amadeus",
+      "source": "snapshot",
       "lowestPrice": 83.53,
       "highestPrice": 123.24,
       "updatedAt": "2025-05-26T04:29:42.380Z"
@@ -122,7 +122,7 @@ export const defaultRoutes: Omit<ApiRoute, 'id'>[] = [
     "meta": {
       "fromCode": "JFK",
       "toCode": "GRR",
-      "source": "amadeus",
+      "source": "snapshot",
       "lowestPrice": 180.62,
       "highestPrice": 298.42,
       "updatedAt": "2025-05-26T04:29:54.973Z"
@@ -155,7 +155,7 @@ export const defaultRoutes: Omit<ApiRoute, 'id'>[] = [
     "meta": {
       "fromCode": "JFK",
       "toCode": "LAX",
-      "source": "amadeus",
+      "source": "snapshot",
       "lowestPrice": 113.98,
       "highestPrice": 151.55,
       "updatedAt": "2025-05-26T04:30:06.664Z"
@@ -188,7 +188,7 @@ export const defaultRoutes: Omit<ApiRoute, 'id'>[] = [
     "meta": {
       "fromCode": "JFK",
       "toCode": "SFO",
-      "source": "amadeus",
+      "source": "snapshot",
       "lowestPrice": 139.04,
       "highestPrice": 160.62,
       "updatedAt": "2025-05-26T04:30:22.928Z"
@@ -221,7 +221,7 @@ export const defaultRoutes: Omit<ApiRoute, 'id'>[] = [
     "meta": {
       "fromCode": "JFK",
       "toCode": "LAS",
-      "source": "amadeus",
+      "source": "snapshot",
       "lowestPrice": 84.46,
       "highestPrice": 113.25,
       "updatedAt": "2025-05-26T04:30:44.040Z"
@@ -254,7 +254,7 @@ export const defaultRoutes: Omit<ApiRoute, 'id'>[] = [
     "meta": {
       "fromCode": "JFK",
       "toCode": "VIE",
-      "source": "amadeus",
+      "source": "snapshot",
       "lowestPrice": 427.4,
       "highestPrice": 627.2,
       "updatedAt": "2025-05-26T04:31:05.929Z"

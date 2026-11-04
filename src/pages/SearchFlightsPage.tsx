@@ -154,7 +154,7 @@ export default function SearchFlightsPage() {
     return `https://www.google.com/travel/flights?${params.toString()}`;
   };
 
-  // Search for airports using Amadeus API
+  // Search the airport-search function (static list)
   const searchAirports = async (keyword: string): Promise<Airport[]> => {
     if (keyword.length < 2) return [];
 

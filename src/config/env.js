@@ -26,13 +26,6 @@ const config = {
   isProduction: process.env.NODE_ENV === 'production',
   isDevelopment: process.env.NODE_ENV !== 'production',
   
-  // Amadeus API
-  amadeus: {
-    apiKey: process.env.AMADEUS_API_KEY,
-    apiSecret: process.env.AMADEUS_API_SECRET,
-    hostname: process.env.AMADEUS_HOSTNAME || 'production',
-  },
-  
   // Database
   db: {
     user: process.env.DB_USER,
@@ -55,8 +48,6 @@ const config = {
 
 // Validate required environment variables
 const requiredEnvVars = [
-  'AMADEUS_API_KEY',
-  'AMADEUS_API_SECRET',
   'DB_USER',
   'DB_PASSWORD',
   'DB_NAME',

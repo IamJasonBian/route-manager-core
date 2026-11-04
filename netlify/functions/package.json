@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "amadeus": "^8.1.0",
     "dotenv": "^16.5.0"
   },
   "main": "_middleware.js",

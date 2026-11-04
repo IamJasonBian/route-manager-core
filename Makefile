@@ -3,14 +3,14 @@
 #   make dev
 #
 # Open http://localhost:3000 (not :5173). Netlify proxies Vite on 5173 and serves
-# /.netlify/functions on the same origin. Amadeus uses the test API (netlify.toml
-# dev.environment AMADEUS_HOSTNAME=test); put Amadeus *test* app keys in .env.
+# /.netlify/functions on the same origin. Flight search uses Kiwi's public,
+# credential-less API, so no search keys are needed.
 #
 # Requires: Node.js, npx netlify-cli. Optional: Docker for Postgres (DB-backed endpoints).
 
 .DEFAULT_GOAL := dev
 
-.PHONY: dev dev-server help db-up db-down test-integration-search pull-amadeus-env local-search-integration \
+.PHONY: dev dev-server help db-up db-down test-integration-search\
 	build release-patch release-minor release-major release-rc release-push current-version
 
 # Full stack: Postgres (if Docker available) + Netlify dev
@@ -38,13 +38,7 @@ db-down:
 test-integration-search:
 	node scripts/integration-search-flight.mjs
 
-# Pull AMADEUS_* from Netlify into .env (needs NETLIFY_AUTH_TOKEN)
-pull-amadeus-env:
-	node scripts/pull-amadeus-from-netlify.mjs
 
-# Pull keys (if needed) + invoke search-flights in-process (no netlify dev)
-local-search-integration:
-	npm run local:search-integration
 
 # --- Build & release -------------------------------------------------------
 #
@@ -100,8 +94,7 @@ help:
 	@echo ""
 	@echo "Test:"
 	@echo "  make test-integration-search - POST search-flights JFK→LAX (needs BASE_URL, default :3000)"
-	@echo "  make pull-amadeus-env        - NETLIFY_AUTH_TOKEN → .env from Netlify site"
-	@echo "  make local-search-integration - pull + in-process Amadeus search (no netlify dev)"
+	@echo "  make        - NETLIFY_AUTH_TOKEN → .env from Netlify site"
 	@echo ""
 	@echo "Build & release:"
 	@echo "  make build           - tsc + vite build"

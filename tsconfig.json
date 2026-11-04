@@ -28,7 +28,6 @@
   "exclude": [
     "src/services/dbDirect.ts",
     "src/services/dbService.ts",
-    "src/services/amadeusService.ts",
     "src/utils",
     "src/**/*.test.ts",
     "src/**/*.test.tsx",

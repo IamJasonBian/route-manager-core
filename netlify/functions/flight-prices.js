@@ -1,48 +1,14 @@
-import Amadeus from 'amadeus';
-import { getFlightPricesForDates } from './lib/amadeusBatch.js';
-
-// Helper function to get config with fallbacks
-const getConfig = async () => {
-  // Try to get from environment variables first (for Netlify)
-  if (process.env.AMADEUS_API_KEY && process.env.AMADEUS_API_SECRET) {
-    console.log('Using environment variables for Amadeus config');
-    return {
-      apiKey: process.env.AMADEUS_API_KEY,
-      apiSecret: process.env.AMADEUS_API_SECRET,
-      hostname: process.env.AMADEUS_HOSTNAME || 'production'
-    };
-  }
-
-  // Fallback to config import (for local development)
-  try {
-    console.log('Trying to load config from ../../src/config/env.js');
-    const config = await import('../../src/config/env.js');
-    return {
-      apiKey: config.default.amadeus.apiKey,
-      apiSecret: config.default.amadeus.apiSecret,
-      hostname: config.default.amadeus.hostname
-    };
-  } catch (error) {
-    console.error('Failed to load config:', error);
-    throw new Error('Failed to load configuration');
-  }
-};
-
-// Initialize Amadeus client
-let amadeus;
+import { getFlightPricesForDates } from './lib/datePrices.js';
 
 // Helper function to format date to YYYY-MM-DD
-const formatDate = (date) => {
-  const d = new Date(date);
-  return d.toISOString().split('T')[0];
-};
+const formatDate = (date) => date.toISOString().slice(0, 10);
 
-// Helper function to generate dates for the next 30 days
+// Next 14 days: one Kiwi search per date has to fit inside the function timeout.
 const generateDatesForNextMonth = () => {
   const dates = [];
   const today = new Date();
   
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 14; i++) {
     const date = new Date(today);
     date.setDate(date.getDate() + i);
     dates.push(formatDate(date));
@@ -70,8 +36,8 @@ export const handler = async (event, context) => {
     return { statusCode: 200, headers: corsHeaders, body: '' };
   }
 
-  // Skip Amadeus entirely — fast local/staging UI without credentials (netlify.toml or .env)
-  if (process.env.USE_MOCK_DATA === 'true' || process.env.AMADEUS_MOCK === '1') {
+  // Fast local/staging UI without hitting Kiwi (netlify.toml or .env)
+  if (process.env.USE_MOCK_DATA === 'true') {
     const params = event.queryStringParameters || {};
     const from = params.from || 'JFK';
     const to = params.to || 'LAX';
@@ -107,26 +73,6 @@ export const handler = async (event, context) => {
     };
   }
 
-  // Initialize Amadeus client if not already initialized
-  if (!amadeus) {
-    console.log('Initializing Amadeus client...');
-    const config = await getConfig();
-    amadeus = new Amadeus({
-      clientId: config.apiKey,
-      clientSecret: config.apiSecret,
-      hostname: config.hostname
-    });
-    console.log('Amadeus client initialized successfully');
-  }
-
-  // Debug: Log environment variables (excluding sensitive ones)
-  console.log('Environment variables:', {
-    AMADEUS_API_KEY: process.env.AMADEUS_API_KEY ? '***' : 'Not set',
-    AMADEUS_API_SECRET: process.env.AMADEUS_API_SECRET ? '***' : 'Not set',
-    AMADEUS_HOSTNAME: process.env.AMADEUS_HOSTNAME || 'Not set',
-    NODE_ENV: process.env.NODE_ENV || 'Not set'
-  });
-
   const headers = corsHeaders;
 
   try {
@@ -143,8 +89,7 @@ export const handler = async (event, context) => {
       };
     }
     
-    // Convert city names to IATA codes if needed
-    // This is a simplified example - in a real app, you'd use the Amadeus Airport & City Search API
+    // Accept a few city names as well as IATA codes
     const cityToCode = {
       'New York': 'JFK',
       'London': 'LHR',
@@ -161,13 +106,11 @@ export const handler = async (event, context) => {
     const originCode = cityToCode[from] || from;
     const destinationCode = cityToCode[to] || to;
     
-    // Generate dates for the next 30 days
+    // Dates to price
     const dates = generateDatesForNextMonth();
 
     // Pull up to 5 offers per date so the trends chart can slice/overlay by carrier.
-    const prices = await getFlightPricesForDates(amadeus, originCode, destinationCode, dates, {
-      maxPerDate: 5,
-    });
+    const prices = await getFlightPricesForDates(originCode, destinationCode, dates, { maxPerDate: 5 });
     
     // If no prices found, return an error
     if (prices.length === 0) {
@@ -222,7 +165,7 @@ export const handler = async (event, context) => {
         basePrice,
         lowestPrice,
         highestPrice,
-        source: 'amadeus'
+        source: 'kiwi'
       })
     };
     
