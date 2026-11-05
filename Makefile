@@ -65,7 +65,7 @@ deploy-gamma:
 deploy-prod:
 	@$(MAKE) _deploy SITE=$(PROD_SITE) ENV=prod
 
-# Internal: build + deploy the committed tree. Refuses a dirty tree so a
+# Internal: build + deploy the committed tree (web app rebuilt every time). Refuses a dirty tree so a
 # deploy always matches a commit.
 _deploy:
 	@if [ -n "$$(git status --porcelain)" ]; then \
@@ -75,6 +75,8 @@ _deploy:
 	fi
 	npm ci --no-audit --no-fund
 	cd netlify/functions && npm ci --no-audit --no-fund
+	# netlify.toml has no build command, so --build only bundles functions; build dist/ here.
+	npm run build
 	npx netlify deploy --build --prod --site $(SITE) --message "$(ENV) $$(git rev-parse --short HEAD)"
 
 current-version:
