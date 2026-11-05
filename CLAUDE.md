@@ -29,7 +29,7 @@ Apollo Flight Trader (Route Manager) is a flight price monitoring and booking op
 | Charts | Recharts, Chart.js |
 | Backend | Netlify Functions (serverless) |
 | API | Kiwi.com public search (MCP) |
-| Deployment | Netlify, GitHub Actions |
+| Deployment | Netlify (manual `make deploy-<env>`) |
 
 ## Development Commands
 
@@ -98,9 +98,8 @@ monterrey/
 
 ### Deployment
 - **Environments**: Alpha (development), Gamma (staging), and Prod (protected)
-- **CI/CD**: GitHub Actions with **tag-gated** environment selection (see "Releases" below)
+- **CI/CD**: none for now; manual `make deploy-<env>` (see "Releases" below)
 - **CDK**: Optional AWS CDK infrastructure in `/cdk` directory
-- **Secrets**: `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID_GAMMA`, `NETLIFY_SITE_ID_PROD`
 - **Alpha Site ID**: `b26b3133-30c1-46f3-b976-59ab7c928b57` (hardcoded)
 
 ## Authentication
@@ -121,34 +120,15 @@ Project backlog: https://github.com/users/IamJasonBian/projects/1
 
 ## Releases
 
-Deploys are gated by git ref shape — no config file edits required.
-
-| Ref pushed                  | Deploys to | Example                     |
-|-----------------------------|------------|-----------------------------|
-| `main` (no tag)             | alpha      | every merge                 |
-| Tag `vX.Y.Z-<suffix>`       | gamma      | `v1.2.0-rc.0`               |
-| Tag `vX.Y.Z` (clean semver) | prod       | `v1.2.0` (also cuts a GitHub Release) |
-
-### Cutting a release
+CI is off (GitHub Actions workflows removed, `NETLIFY_AUTH_TOKEN` secret deleted).
+Deploys are manual, from a clean checkout, with your own `netlify login`:
 
 ```bash
-make release-rc       # 1.0.0 → 1.0.1-rc.0  → tag v1.0.1-rc.0  → gamma
-make release-patch    # 1.0.0 → 1.0.1       → tag v1.0.1       → prod
-make release-minor    # 1.0.0 → 1.1.0       → tag v1.1.0       → prod
-make release-major    # 1.0.0 → 2.0.0       → tag v2.0.0       → prod
+make deploy-alpha     # route-manager-alpha
+make deploy-gamma     # route-manager-gamma
+make deploy-prod      # route-manager-prod
 ```
 
-Each target bumps `package.json`, creates a `release: vX.Y.Z` commit, tags it,
-and runs `git push --follow-tags`. Working tree must be clean — the target
-aborts otherwise so a release never silently includes WIP.
-
-### Breakglass
-
-When you need to deploy a specific commit to a specific env outside the tag flow
-(hotfix from a branch, redeploy of an old SHA, etc.):
-
-1. GitHub → Actions → "Deploy to Netlify" → **Run workflow**
-2. Pick the branch/tag and target environment
-3. Run
-
-This bypasses the ref-shape gating but still runs the full build + deploy.
+`_deploy` refuses a dirty tree, runs `npm ci` for the app and functions, then
+`netlify deploy --build --prod --site <id>`. `make release-*` still bumps,
+tags and pushes, but no longer deploys.

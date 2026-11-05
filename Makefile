@@ -11,7 +11,7 @@
 .DEFAULT_GOAL := dev
 
 .PHONY: dev dev-server help db-up db-down test-integration-search\
-	build release-patch release-minor release-major release-rc release-push current-version
+	build deploy-alpha deploy-gamma deploy-prod _deploy release-patch release-minor release-major release-rc release-push current-version
 
 # Full stack: Postgres (if Docker available) + Netlify dev
 dev: db-up
@@ -42,19 +42,40 @@ test-integration-search:
 
 # --- Build & release -------------------------------------------------------
 #
-# Release flow (tag-gated CI in .github/workflows/deploy-netlify.yml):
-#   make release-patch   # 1.0.0 → 1.0.1 → tag v1.0.1   → prod  on push
-#   make release-minor   # 1.0.0 → 1.1.0 → tag v1.1.0   → prod  on push
-#   make release-major   # 1.0.0 → 2.0.0 → tag v2.0.0   → prod  on push
-#   make release-rc      # 1.0.0 → 1.0.1-rc.0 → tag     → gamma on push
+# CI is off: deploys are manual from a clean checkout, with your own
+# `netlify login` (no tokens in GitHub).
+#   make deploy-alpha | deploy-gamma | deploy-prod
 #
-# All `release-*` targets bump version + commit + tag locally, then call
-# release-push to publish the tag (and trigger CI). Push to main alone
-# (no tag) deploys to alpha. Breakglass: GitHub Actions → "Run workflow"
-# → choose env. Run `make current-version` to see what's in package.json.
+# `release-*` targets still bump version + commit + tag + push; they no
+# longer deploy anything. Run `make current-version` to see package.json.
 
 build:
 	npm run build
+
+ALPHA_SITE := b26b3133-30c1-46f3-b976-59ab7c928b57
+GAMMA_SITE := 9112939a-1227-46fe-9cbb-64ae8a304054
+PROD_SITE  := d7e43b0c-8075-4c35-8439-536bf792adde
+
+deploy-alpha:
+	@$(MAKE) _deploy SITE=$(ALPHA_SITE) ENV=alpha
+
+deploy-gamma:
+	@$(MAKE) _deploy SITE=$(GAMMA_SITE) ENV=gamma
+
+deploy-prod:
+	@$(MAKE) _deploy SITE=$(PROD_SITE) ENV=prod
+
+# Internal: build + deploy the committed tree. Refuses a dirty tree so a
+# deploy always matches a commit.
+_deploy:
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Working tree is dirty — commit or stash before deploying."; \
+		git status --short; \
+		exit 1; \
+	fi
+	npm ci --no-audit --no-fund
+	cd netlify/functions && npm ci --no-audit --no-fund
+	npx netlify deploy --build --prod --site $(SITE) --message "$(ENV) $$(git rev-parse --short HEAD)"
 
 current-version:
 	@node -p "require('./package.json').version"
@@ -94,12 +115,12 @@ help:
 	@echo ""
 	@echo "Test:"
 	@echo "  make test-integration-search - POST search-flights JFK→LAX (needs BASE_URL, default :3000)"
-	@echo "  make        - NETLIFY_AUTH_TOKEN → .env from Netlify site"
 	@echo ""
 	@echo "Build & release:"
 	@echo "  make build           - tsc + vite build"
+	@echo "  make deploy-alpha    - build + deploy committed tree to alpha (also gamma/prod)"
 	@echo "  make current-version - print package.json version"
-	@echo "  make release-patch   - bump patch → tag → push (deploys to prod)"
-	@echo "  make release-minor   - bump minor → tag → push (deploys to prod)"
-	@echo "  make release-major   - bump major → tag → push (deploys to prod)"
-	@echo "  make release-rc      - bump prerelease (rc.N) → tag → push (deploys to gamma)"
+	@echo "  make release-patch   - bump patch → tag → push (no deploy while CI is off)"
+	@echo "  make release-minor   - bump minor → tag → push (no deploy while CI is off)"
+	@echo "  make release-major   - bump major → tag → push (no deploy while CI is off)"
+	@echo "  make release-rc      - bump prerelease (rc.N) → tag → push (no deploy while CI is off)"

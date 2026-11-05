@@ -129,16 +129,11 @@ npm run preview
 
 #### Deployment
 
-Deployments are managed via GitHub Actions:
+CI is off for now; deploy manually from a clean checkout after `npx netlify login`:
 
-- **Gamma**: Automatically deploys on push/PR to main
-- **Prod**: Manual deployment only (blocked by default)
-
-To deploy to prod:
-1. Go to Actions → "Deploy to Netlify"
-2. Click "Run workflow"
-3. Check "Deploy to PROD (requires manual approval)"
-4. Click "Run workflow"
+```bash
+make deploy-alpha   # or deploy-gamma / deploy-prod
+```
 
 **Runtime Permissions:**
 
@@ -146,7 +141,6 @@ Netlify Account Used (current): jasonzb@umich.edu
 
 | Secret | Description |
 |--------|-------------|
-| `NETLIFY_AUTH_TOKEN` | Your Netlify personal access token |
 | `NETLIFY_SITE_ID_GAMMA` | Site ID for gamma environment |
 | `NETLIFY_SITE_ID_PROD` | Site ID for prod environment |
 
