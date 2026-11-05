@@ -36,7 +36,7 @@ async function main() {
       console.error(`FAIL ${p}`, e.message);
     }
   }
-  console.log('\nTip: set USE_MOCK_DATA=true in .env for flight-prices without Amadeus.');
+  console.log('\nTip: set USE_MOCK_DATA=true in .env for flight-prices without calling Kiwi.');
 }
 
 main();

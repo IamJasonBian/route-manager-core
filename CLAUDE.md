@@ -17,7 +17,7 @@ Apollo Flight Trader (Route Manager) is a flight price monitoring and booking op
 ### Key Features
 - Low latency flight price monitoring with historical and volatility analysis
 - Route management for tracking common flight routes and pricing
-- Direct integration with Amadeus Flight API
+- Flight search via Kiwi.com's public, credential-less API (Amadeus retired 2026-07-17)
 - Planned: Booking, rescheduling, and buying agent
 
 ## Tech Stack
@@ -28,7 +28,7 @@ Apollo Flight Trader (Route Manager) is a flight price monitoring and booking op
 | Styling | Tailwind CSS, Radix UI |
 | Charts | Recharts, Chart.js |
 | Backend | Netlify Functions (serverless) |
-| API | Amadeus Flight API |
+| API | Kiwi.com public search (MCP) |
 | Deployment | Netlify, GitHub Actions |
 
 ## Development Commands
@@ -81,10 +81,9 @@ monterrey/
 │   └── functions/        # Serverless API endpoints
 │       ├── search-flights.js
 │       ├── flight-prices.js
-│       ├── popular-routes.js
+│       ├── airport-search.js
 │       ├── health.js
 │       └── ...
-└── common/               # Shared code between frontend and functions
 ```
 
 ## Architecture Patterns
@@ -95,7 +94,7 @@ monterrey/
 
 ### Backend (Netlify Functions)
 - **Pattern**: Serverless functions with CORS middleware
-- **API Integration**: Amadeus SDK for flight data
+- **API Integration**: `netlify/functions/lib/kiwi.js` (Kiwi MCP), mapped to the FlightOffer shape
 
 ### Deployment
 - **Environments**: Alpha (development), Gamma (staging), and Prod (protected)
@@ -106,10 +105,7 @@ monterrey/
 
 ## Authentication
 
-Currently no user authentication implemented. Amadeus API credentials are stored as environment variables in Netlify:
-- `AMADEUS_API_KEY`
-- `AMADEUS_API_SECRET`
-- `AMADEUS_HOSTNAME`
+Currently no user authentication implemented. Flight search needs no credentials.
 
 ## Backlog
 

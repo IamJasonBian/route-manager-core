@@ -151,7 +151,7 @@ export default function PriceTrendsPage() {
     setTabValue(newValue);
   };
 
-  // Search for airports using Amadeus API
+  // Search the airport-search function (static list)
   const searchAirports = async (keyword: string): Promise<Airport[]> => {
     if (keyword.length < 2) return [];
 

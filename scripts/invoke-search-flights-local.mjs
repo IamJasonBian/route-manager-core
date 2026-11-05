@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Invoke search-flights handler in-process (no HTTP). Loads ../.env via dotenv.
- * Run after: NETLIFY_AUTH_TOKEN=... node scripts/pull-amadeus-from-netlify.mjs
+ * No credentials needed (Kiwi public search).
  */
 
 import path from 'path';

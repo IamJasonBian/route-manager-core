@@ -32,7 +32,6 @@ loadEnv();
 // Log loaded environment (except sensitive data)
 console.log('Environment variables loaded for Netlify Functions');
 console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('AMADEUS_HOSTNAME:', process.env.AMADEUS_HOSTNAME);
 console.log('DB_HOST:', process.env.DB_HOST);
 
 // This middleware will run before all functions

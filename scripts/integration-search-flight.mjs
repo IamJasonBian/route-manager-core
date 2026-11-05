@@ -4,7 +4,7 @@
  *
  * Workflow (local):
  *   1. Start stack: `make dev` (or `npx netlify dev`) — use http://localhost:3000
- *   2. Ensure `.env` has Amadeus test keys (netlify.toml uses AMADEUS_HOSTNAME=test for dev)
+ *   2. No keys needed: search-flights uses Kiwi's public API
  *   3. Run: `npm run test:integration:search`
  *      or: `BASE_URL=http://localhost:3000 node scripts/integration-search-flight.mjs`
  *
@@ -77,7 +77,7 @@ async function main() {
 
   if (data.length === 0) {
     console.warn(
-      'API returned 200 but zero offers. Try a different DEPARTURE_DATE, check Amadeus quota, or USE_MOCK_DATA if applicable.'
+      'API returned 200 but zero offers. Try a different DEPARTURE_DATE, or check Kiwi availability.'
     );
     process.exit(2);
   }

@@ -50,7 +50,7 @@ This adds value on top of common workflows in Google Flights (and associated not
 
 - **Low Latency Flight Monitoring** - Fetch flight prices with historical, projected, volatility and delay analysis
 - **Route Management** - Track common flight routes and associated pricing
-- **API Integration** - Direct Integration with the Amadeus Flight API
+- **API Integration** - Kiwi.com public flight search (credential-less)
 - **Git Style Forking and Trip Sharing** - IOS App based 
 
 ## Some Planned Features 
@@ -73,7 +73,6 @@ This adds value on top of common workflows in Google Flights (and associated not
 
 ### Prerequisites (Self Service Install)
 - Node.js 18+ & npm 9+
-- Amadeus API credentials (for live data and production use)
 - Netlify Account (for hosting data access functions, we're using netlify rather than doing direct calls from front-end code)
 - Github Repository and Pipelines Personal Stacks
 
@@ -97,9 +96,8 @@ This adds value on top of common workflows in Google Flights (and associated not
    cp .env.example .env
    ```
 
-4. **Netlify and Amadeus setup**
-   - Set up an Amadeus account to provision prod keys
-   - Set up Netlify environments (Amadeus variables are loaded into the Netlify environment and accessed at runtime)
+4. **Netlify setup**
+   - Set up Netlify environments (alpha/gamma/prod). Flight search needs no API keys.
 
 ### Running Locally
 
@@ -156,8 +154,8 @@ Netlify Account Used (current): jasonzb@umich.edu
 
 - `GET /.netlify/functions/health` - Health check
 - `POST /.netlify/functions/search-flights` - Search for flights
-- `GET /.netlify/functions/popular-routes` - Get popular routes
-- `GET /.netlify/functions/flight-prices` - Get flight prices
+- `GET /.netlify/functions/flight-prices?from=SEA&to=SFO` - Cheapest prices for the next 14 days
+- `GET /.netlify/functions/airport-search?keyword=sea` - Static airport lookup
 
 ##  Auth Configuration
 
@@ -167,9 +165,7 @@ Netlify Account Used (current): jasonzb@umich.edu
 |----------|-------------|---------|
 | `NODE_ENV` | Application environment | `development` |
 | `PORT` | Port to run the server | `3000` |
-| `AMADEUS_API_KEY` | Amadeus API key | - |
-| `AMADEUS_API_SECRET` | Amadeus API secret | - |
-| `AMADEUS_HOSTNAME` | Amadeus API hostname | `production` |
+| `KIWI_MCP_URL` | Kiwi MCP endpoint | `https://mcp.kiwi.com/` |
 | `DB_USER` | Database username | `routeuser` |
 | `DB_PASSWORD` | Database password | - |
 | `DB_NAME` | Database name | `routedb` |
@@ -190,36 +186,11 @@ npm run test:watch
 
 * Alpha | Single Page Analytics Demo: https://apollo-route-manager-0acz9.netlify.app/ 
 
-## API Diver
-
-### Auth
+## API Driver
 
 ```bash
-# Obtain access token
-curl -X POST "https://api.amadeus.com/v1/security/oauth2/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials&client_id=YOUR_API_KEY&client_secret=YOUR_SECRET"
+# One-way search (Kiwi via search-flights; maxStops 0 = nonstop only)
+curl -X POST "https://route-manager-alpha.netlify.app/.netlify/functions/search-flights" \
+  -H "Content-Type: application/json" \
+  -d '{"origin":"SEA","destination":"NYC","departureDate":"2026-12-15","maxResults":5,"maxStops":0}'
 ```
-
-### Example Request (Amadeus)
-
-```bash
-# Fetch flight offers
-curl -X GET "https://api.amadeus.com/v2/shopping/flight-offers" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
-  -G \
-  --data-urlencode "originLocationCode=NYC" \
-  --data-urlencode "destinationLocationCode=LAX" \
-  --data-urlencode "departureDate=2023-12-15" \
-  --data-urlencode "adults=1"
-```
-
-##  Contributing
-
-1. Fork the repository
-2. Create a new Pull Request
-3. Feel free to contact me at jason.bian64@gmail.com for any requests or questions!
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

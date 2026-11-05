@@ -115,10 +115,10 @@ jobs:
 
       - name: (Non-blocking) Test deployed functions
         run: |
-          echo "Testing /test-env endpoint (ignore errors):";
-          curl --fail --silent --show-error "https://route-manager-alpha.netlify.app/.netlify/functions/test-env" || echo "test-env endpoint failed (non-blocking)";
+          echo "Testing /health endpoint (ignore errors):";
+          curl --fail --silent --show-error "https://route-manager-alpha.netlify.app/.netlify/functions/health" || echo "health endpoint failed (non-blocking)";
           echo "Testing /search-flights endpoint (ignore errors):";
-          curl --fail --silent --show-error "https://route-manager-alpha.netlify.app/.netlify/functions/search-flights" || echo "search-flights endpoint failed (non-blocking)";
+          curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' -d "{\"origin\":\"SEA\",\"destination\":\"SFO\",\"departureDate\":\"$(date -u -d '+7 days' +%F)\",\"maxResults\":1}" "https://route-manager-alpha.netlify.app/.netlify/functions/search-flights" || echo "search-flights endpoint failed (non-blocking)";
 
   deploy-gamma:
     runs-on: ubuntu-latest
@@ -200,7 +200,7 @@ jobs:
 
       - name: (Non-blocking) Test deployed functions
         run: |
-          echo "Testing /test-env endpoint (ignore errors):";
-          curl --fail --silent --show-error "https://route-manager-prod.netlify.app/.netlify/functions/test-env" || echo "test-env endpoint failed (non-blocking)";
+          echo "Testing /health endpoint (ignore errors):";
+          curl --fail --silent --show-error "https://route-manager-prod.netlify.app/.netlify/functions/health" || echo "health endpoint failed (non-blocking)";
           echo "Testing /search-flights endpoint (ignore errors):";
-          curl --fail --silent --show-error "https://route-manager-prod.netlify.app/.netlify/functions/search-flights" || echo "search-flights endpoint failed (non-blocking)";
+          curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' -d "{\"origin\":\"SEA\",\"destination\":\"SFO\",\"departureDate\":\"$(date -u -d '+7 days' +%F)\",\"maxResults\":1}" "https://route-manager-prod.netlify.app/.netlify/functions/search-flights" || echo "search-flights endpoint failed (non-blocking)";

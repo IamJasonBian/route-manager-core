@@ -52,17 +52,6 @@ export class NetlifyDeployStack extends cdk.Stack {
       'route-manager/netlify-site-id-alpha'
     );
 
-    const amadeusApiKey = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      'AmadeusApiKey',
-      'route-manager/amadeus-api-key'
-    );
-
-    const amadeusApiSecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      'AmadeusApiSecret',
-      'route-manager/amadeus-api-secret'
-    );
 
     // Create CodeBuild project for building and deploying
     const buildProject = new codebuild.PipelineProject(this, 'NetlifyBuildProject', {
@@ -84,14 +73,6 @@ export class NetlifyDeployStack extends cdk.Stack {
         TARGET_ENV: {
           type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
           value: targetEnv,
-        },
-        AMADEUS_API_KEY: {
-          type: codebuild.BuildEnvironmentVariableType.SECRETS_MANAGER,
-          value: amadeusApiKey.secretArn,
-        },
-        AMADEUS_API_SECRET: {
-          type: codebuild.BuildEnvironmentVariableType.SECRETS_MANAGER,
-          value: amadeusApiSecret.secretArn,
         },
       },
       buildSpec: codebuild.BuildSpec.fromObject({
@@ -129,8 +110,6 @@ export class NetlifyDeployStack extends cdk.Stack {
     // Grant permissions to read secrets
     netlifyAuthToken.grantRead(buildProject);
     netlifyAlphaSiteId.grantRead(buildProject);
-    amadeusApiKey.grantRead(buildProject);
-    amadeusApiSecret.grantRead(buildProject);
 
     // Create CodePipeline
     const pipeline = new codepipeline.Pipeline(this, 'DeployPipeline', {

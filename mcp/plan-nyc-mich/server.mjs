@@ -8,9 +8,8 @@
 // one.
 //
 // AUTH: this server holds no credentials. It proxies to the deployed Netlify
-// function `search-flights`, which holds the Amadeus API key/secret in its
-// site environment (AMADEUS_API_KEY / AMADEUS_API_SECRET — set per Netlify
-// site; see netlify/functions/search-flights.js). Override the upstream with
+// function `search-flights`, which searches Kiwi's public API (no credentials;
+// see netlify/functions/search-flights.js). Override the upstream with
 // the ROUTE_MANAGER_ENDPOINT env var.
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
